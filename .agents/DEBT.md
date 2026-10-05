@@ -13,38 +13,57 @@ Owners: `gs-term` · `Cognate` · `DomainForge` · `Bun` · `unresolved`.
 ## Cognate / framework debt
 
 ### D-001 No external observation-ingest primitive
-- **Current behavior:** mechanism-layer facts (shell boundaries, fs changes, ports) enter Cognate
-  only by starting an agent run (`startRun("agent.observe")` via `src/bridge/observation.ts`);
-  runs are the only event door (`ctx.emit`).
+- **Current behavior:** mechanism-layer facts (shell boundaries, fs changes, ports) enter Cognate only
+  by starting an agent run (`startRun("agent.observe")` via `src/bridge/observation.ts`); runs are the
+  only event door (`ctx.emit`).
 - **Why debt:** INTENT ("execute this"), OBSERVATION ("file appeared / port opened / process
-  exited"), and INFERENCE ("this execution caused this effect") are different semantic kinds;
-  the log currently represents observations as if actions/runs occurred.
-- **Consequence/risk:** event semantics conflate acting with noticing; consumers must know which
-  runs are pseudo-runs; pressure grows per observed fact.
-- **Workaround:** `agent.observe`/`agent.execute` runs with `source` metadata; catalog J1/J2
-  document the mapping. No fake local observation bus was invented.
-- **Evidence:** `.sea/interaction/assumptions-and-unknowns.md` A1; `runtime-api` service surface
-  (no append/ingest method). **Phase-2 pressure test (SSH, second physical reality source)
-  STRENGTHENED the case:**
+  exited"), and INFERENCE ("this execution caused this effect") are different semantic kinds; the log
+  currently represents observations as if actions/runs occurred.
+- **Consequence/risk:** event semantics conflate acting with noticing; consumers must know which runs
+  are pseudo-runs; pressure grows per observed fact.
+- **Workaround:** `agent.observe`/`agent.execute` runs with `source` metadata; catalog J1/J2 document
+  the mapping. No fake local observation bus was invented.
+- **Evidence:** `.sea/interaction/assumptions-and-unknowns.md` A1; `runtime-api` service surface (no
+  append/ingest method). **Phase-2 pressure test (SSH, second physical reality source) STRENGTHENED
+  the case:**
   1. remote facts *during* an execution (remote file appeared) settle through the same pseudo-run
      door as local facts — the door did not generalize, it just got more traffic;
   2. facts *outside* any execution remain unrepresentable at all: the SSH connection dropping, a
      foreign remote change, fixture shutdown — recording them would require inventing an action;
   3. world-state reconciliation records observations as `state.changed` with
      `metadata.source: "caller"` — an observation disguised as a caller edit;
-  4. `world.snapshot` computes rich facts that are silently discarded unless a run or a
-     shared-state write consumes them.
-- **Phase-2 verdict (mandated three-way call): (3) repeated evidence now suggests a general
-  observation-ingest primitive is warranted** — two independent reality sources (PTY/local fs
-  and SSH remote) were forced through the same action-shaped door, and out-of-execution facts
-  still cannot enter the log honestly. **Proposal sketch (NOT implemented; upstream work must
-  follow the `building-with-cognate` gap method in the Cognate repo):** a caller-authorized
-  `RuntimeService.observe(caller, { kind, subject: SemanticRef-ish, facts: Json, observedAt,
-  provenance, correlationId? })` appending a typed `observation.recorded` event distinct from
-  runs/invocations, projectable alongside them, with authority checked like every service call.
-- **Reconsider:** when the upstream proposal is reviewed; or when a third reality source or
-  continuous observation arrives.
-- **Owner:** Cognate (general concern) · **Status:** `upstream-candidate`
+  4. `world.snapshot` computes rich facts that are silently discarded unless a run or a shared-state
+     write consumes them.
+- **Phase-2.5 framework-gap validation (building-with-cognate) — CONFIRMED a general Cognate gap.**
+  Existing primitives considered and rejected as the door: `RunContext.emit` (run-bound), `startRun`
+  (fabricates intent), `updateSharedState` (`source:"caller"` = mutation provenance), RealityTrace
+  `Observation` (an **outbound** evidence adapter — requires an existing `eventId`, `observationId`
+  derived from the source event; direction is event-log → external, not reality → log), `NewEvent`/
+  `DurableStore.commit` (already supports `runId:null`/`causationId:null` but is a low-level store
+  port bypassing governor/idempotency), `cognitive-api` `SourceType:"observation"` (indexing, not
+  ingest). The envelope and evidence layer already anticipated observations; the **inbound ingest
+  door** was missing. General: any Cognate app with an external reality source faces this.
+- **Implementation (Phase 2.5):** smallest general primitive — `RuntimeService.observe(caller, input)`
+  appends a run-less `observation.recorded` event with observation provenance
+  (`metadata.source:"observation"`), `runId:null`, `causationId` set ONLY when
+  `attribution.kind==="caused"` (unknown causation stays null — never invented), world-scoped
+  `(worldId, resource)` identity, `observation.record` authority, deterministic idempotent replay;
+  `emit` reserves `observation.` so a run cannot fabricate one. Reuses the existing envelope/governor/
+  idempotency/projections and feeds RealityTrace's `Observation` (outbound) — no parallel event bus.
+- **Migration evidence (gs-term):** `src/bridge/observation.ts` reconciliation discovered facts (a
+  port appearing, a tree turning dirty) now enter via `service.observe` (`src/semantic/observations.ts`
+  builders) as observations — no manufactured action/run. Proofs in
+  `test/journeys/journey-j6-observations.test.ts`: **D** a foreign fact enters without a fabricated
+  run (runId:null, source:"observation"); **E** an execution's effect retains correlation + cited
+  causation while remaining `runId:null`; **F** `observed:true, causedBy:unknown` (causationId null,
+  attribution not "caused"); **G** `(worldId, resource)` identity preserved across local/ssh. The
+  J1 PTY command remains a run (a real execution); effects are still correctly execution-associated
+  (Phase-1/2 model unchanged).
+- **Cognate commit:** `fb7c250b3c164776c2585e53c810106ea9d6ad0a` (feat: add first-class observation
+  ingestion). Tests: `packages/runtime-bun/test/observation.test.ts` (11 green) + gs-term j6 (4 green).
+- **Reconsider:** on a third reality source, continuous observation, or if effect-evidence fan-out to
+  observations is later wanted (auto-deriving observations for every effect in the follower).
+- **Owner:** Cognate (primitive) + gs-term (migration) · **Status:** `resolved`
 
 ### D-002 Kernel `Policy` cannot distinguish execution worlds
 - **Current behavior:** `AuthorizationRequest` carries `{capability, providerId, actor, tenant,
@@ -206,7 +225,9 @@ Owners: `gs-term` · `Cognate` · `DomainForge` · `Bun` · `unresolved`.
   facts outside an execution (connection dropped, foreign remote change) cannot enter the log
   without a pseudo-run.
 - **Evidence:** Phase-2 SSH pressure test — folded into D-001's verdict (3: primitive warranted).
-  · **Owner:** Cognate · **Status:** `upstream-candidate`
+  · **Resolution (Phase 2.5):** the first-class observation door (`RuntimeService.observe`) represents
+  any out-of-run fact, remote included — `(worldId, resource)` keeps it world-scoped; j6 proofs cover
+  foreign + unknown-causation cases. · **Owner:** Cognate + gs-term (via D-001) · **Status:** `resolved` (Cognate `fb7c250`)
 
 ## WebMCP debt
 

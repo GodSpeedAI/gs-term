@@ -131,6 +131,38 @@ export interface Effect {
   readonly evidence: readonly Evidence[];
 }
 
+// ── Observations (a fact noticed about reality — never an action/run) ──────────
+// Distinct semantic kind from an execution. Causation is cited only when established; otherwise it
+// is left unknown. Resource identity is the pair (worldId, resource) — never merged across worlds.
+
+export type ObservationAttributionKind = "unattributed" | "correlated" | "caused";
+export type ObservationConfidence = "observed" | "inferred" | "unknown";
+
+export interface ObservationAttribution {
+  readonly kind: ObservationAttributionKind;
+  readonly correlationId?: string;
+  /** The execution event id this fact was caused by (only when `kind === "caused"`). */
+  readonly causationEventId?: string;
+  readonly confidence?: ObservationConfidence;
+}
+
+export interface ObservationSource {
+  readonly observer: string;
+  readonly provider?: string;
+  readonly method?: string;
+}
+
+export interface ObservationRecord {
+  readonly kind: string;
+  readonly subject: { readonly worldId?: string; readonly resource: string; readonly kind?: string };
+  readonly facts: unknown;
+  readonly source: ObservationSource;
+  readonly evidence?: unknown;
+  readonly attribution: ObservationAttribution;
+  readonly observedAt: string;
+  readonly idempotencyKey: string;
+}
+
 export type ExecutionSource = "pty" | "ui" | "webmcp";
 
 // ── Event payloads (durable vocabulary; see handoff.md) ───────────────────────

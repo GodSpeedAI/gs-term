@@ -2,10 +2,11 @@
 // semantic world. Shell-integration markers arrive here; the bridge turns them into catalogued
 // journey runs (J1 agent.observe) and reconciles world shared state (J3) after settlements.
 // It never writes events directly — Cognate's only door to durable truth is agent runs.
-import type { Caller, RuntimeService, StateUpdate } from "@cognate/runtime-api";
+import type { Caller, ObservationInput, RuntimeService, StateUpdate } from "@cognate/runtime-api";
 import type { Json } from "@cognate/events";
 import type { CommandDoneMarker, CommandStartMarker, Marker } from "../shell/markers.ts";
-import type { WorldSnapshot, WorldStateView } from "../semantic/contracts.ts";
+import type { ObservationRecord, WorldSnapshot, WorldStateView } from "../semantic/contracts.ts";
+import { factToObservation } from "../semantic/observations.ts";
 import { buildWorldState } from "../observers/snapshot.ts";
 import { json } from "../agents/shared.ts";
 
@@ -168,6 +169,59 @@ export class ObservationBridge {
           : prior,
     });
     await this.writeWorldState(state, trigger);
+    await this.recordDiscoveredFacts(previousState, snapshot, state);
+  }
+
+  /**
+   * Record reality facts discovered by reconciliation as first-class observations (D-001 migration).
+   * These are NOT actions/runs: a port appearing or a working tree turning dirty is reality noticed
+   * outside any gs-term execution. Attribution is correlated to the session but its CAUSE is unknown
+   * (causationId stays null — never invented). Bounded: only NEW/CHANGED facts are recorded, and each
+   * is idempotent per (fact, snapshot) so a retry never double-records.
+   */
+  private async recordDiscoveredFacts(previousState: WorldStateView | null, snapshot: WorldSnapshot, state: WorldStateView): Promise<void> {
+    const worldId = snapshot.world.worldId;
+    const observedAt = snapshot.observedAt;
+    const attribution = { kind: "correlated" as const, correlationId: this.threadId(), confidence: "observed" as const };
+    const source = { observer: "world-reconciler", provider: snapshot.world.kind, method: "reconciliation" };
+    // Null-safe entry access: read-back state and provider snapshots can omit a scope.
+    const entriesOf = (value: unknown): readonly { port: number }[] =>
+      value && typeof value === "object" && "entries" in value ? ((value as { entries: unknown }).entries as readonly { port: number }[] ?? []) : [];
+    const prevPorts = new Set<number>(entriesOf((previousState as { ports?: unknown } | null)?.ports).map((p) => p.port));
+    for (const port of entriesOf((state as { ports?: unknown }).ports)) {
+      if (prevPorts.has(port.port)) continue; // already known — not a new fact
+      await this.recordFact(factToObservation(
+        "port.available",
+        { worldId, resource: `port/${port.port}`, kind: "port" },
+        port,
+        source,
+        attribution,
+        observedAt,
+        `fact:port:${worldId}:${port.port}:${observedAt}`,
+      ));
+    }
+    const prevDirty = (previousState as { repository?: { dirty?: boolean } } | null)?.repository?.dirty;
+    const repo = (state as { repository?: { status?: string; dirty?: boolean; branch?: string | null; changedFiles?: readonly string[] } }).repository;
+    if (repo?.status === "observed" && repo.dirty === true && prevDirty === false) {
+      await this.recordFact(factToObservation(
+        "git.dirty",
+        { worldId, resource: "repository", kind: "repository" },
+        { branch: repo.branch, changedFiles: repo.changedFiles },
+        source,
+        attribution,
+        observedAt,
+        `fact:git-dirty:${worldId}:${observedAt}`,
+      ));
+    }
+  }
+
+  /** The honest door: record a reality fact as a Cognate observation — never a run or an action. */
+  private async recordFact(record: ObservationRecord): Promise<void> {
+    try {
+      await this.options.service.observe(this.caller, { ...record } as unknown as ObservationInput);
+    } catch (error) {
+      this.options.onError?.("record-fact", error);
+    }
   }
 
   private async writeWorldState(state: WorldStateView, trigger: string): Promise<void> {

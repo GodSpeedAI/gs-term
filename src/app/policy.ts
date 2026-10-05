@@ -51,6 +51,9 @@ export function gstermActions(): ActionPolicy {
         case "thread.state.read":
         case "thread.state.update":
           return resource.startsWith(WORLD_THREAD_PREFIX) ? allow("session world thread") : deny("world state is session-scoped");
+        case "observation.record":
+          // Reality facts noticed by the mechanism/observer layer — recorded as observations, not actions.
+          return allow("observation ingestion (facts, not actions)");
         case "remote.offer.publish":
         case "remote.offer.list":
         case "remote.offer.revoke":

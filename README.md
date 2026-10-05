@@ -59,11 +59,21 @@ world view, and reload/restart preserve durable history.
 └──────────────────────────────────────────┘  └──────────────────────────────────┘
 ```
 
-- **One event door.** Cognate has no external event-append API; every semantic record is an
-  agent run (`agent.execute`, `agent.observe`). The bridge (the only module that knows both
-  layers) turns shell observations into runs via `startRun`.
+- **Two semantic doors, one world.** An **action/run** (`agent.execute`, `agent.observe`) is intent:
+  something was requested and executed. An **observation** (`RuntimeService.observe`) is a fact
+  noticed about reality — a file appeared, a port opened — recorded as a run-less `observation.recorded`
+  event with `source:"observation"` provenance, never as a fake action. The bridge (the only module
+  that knows both layers) settles shell commands as runs and reconciles discovered world facts as
+  observations. Attribution is explicit: `correlated`/`caused`/`unattributed`, with `causationId` set
+  only when a cause is established (unknown causation stays null).
+
+  ```
+       INTENT ─► Cognate action/run ─► execution ──(correlation)──┐
+                                                                  ▼
+  REALITY ──► OBSERVATION ──► evidence/provenance ──► effects / world state
+  ```
 - **Structured execution = `@cognate/execution`** — `process.exec` + `filesystem.*` over an
-  `ExecutionWorldProvider` registry (local world now; ssh/wsl providers are drop-in later).
+  `ExecutionWorldProvider` registry (local + ssh worlds now; wsl provider is a drop-in later).
 - **World state = Cognate shared thread state** (`session:<id>`), written by the bridge at
   settlement with `expectedVersion` + idempotency; unknown ≠ false everywhere.
 - **Derived read model** = public projection `executions` (tenant-partitioned keys, versioned
@@ -165,8 +175,9 @@ each execution; effects carry per-world provenance.
 - The dev-token authenticator is a development boundary, not production auth.
 
 Known debt is tracked durably in [`.agents/DEBT.md`](.agents/DEBT.md) (30+ items with owners and
-statuses), including the Cognate observation-ingest upstream candidate (D-001) and the
-per-world policy gap (D-002).
+statuses). The observation-ingest gap (D-001) was validated and **resolved** in Phase 2.5 with a
+first-class Cognate `RuntimeService.observe` primitive; the per-world policy gap (D-002) remains an
+upstream candidate.
 
 ## Deliberate next seams (not built)
 

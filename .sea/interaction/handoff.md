@@ -96,3 +96,20 @@ WebMCP adapter is the only projection path, mechanism layer imports no `@cognate
 
 See `validation/` for exact DomainForge commands and outputs; re-run after any `.sea` edit and
 update the digest above.
+
+## Phase 2.5 snapshot (observation-ingest)
+
+```
+Phase 2.5 baseline (rollback boundary):
+  cognate: 1e678c6e4d64126ae0b2df186c81057984a66a1d
+  gs-term: 89754b35008d0f31bd12d97b20e2b512c686c861
+
+Phase 2.5 completion:
+  cognate: fb7c250b3c164776c2585e53c810106ea9d6ad0a   (feat: add first-class observation ingestion)
+  gs-term: the Phase 2.5 completion commit (this file) — refactor: use first-class Cognate observations
+```
+
+The Cognate primitive (`RuntimeService.observe`) is consumed by gs-term's bridge (reconciliation
+discovered facts) and proved by `test/journeys/journey-j6-observations.test.ts` (D/E/F/G). The
+distinction INTENT/action-run vs. REALITY/observation vs. inference/attribution is documented in
+`docs/concepts.md` (Cognate) and the root `README.md` architecture section (gs-term).
