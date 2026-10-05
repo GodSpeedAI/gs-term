@@ -10,8 +10,8 @@ import { isWorldSnapshot, json, renderCommand, requireArgv, requireString, trunc
 export const EXECUTE_AGENT_ID = "agent.execute";
 
 export interface ExecuteAgentOptions {
-  /** Containment boundary: cwd resolves inside this root or PathEscapeError fails the run. */
-  readonly root: string;
+  /** Containment root PER WORLD: cwd resolves inside its world's root or the run fails closed. */
+  readonly worldRoots: Readonly<Record<string, string>>;
   readonly defaultWorldId: string;
   readonly defaultTimeoutMs: number;
 }
@@ -46,8 +46,10 @@ export function executeAgent(options: ExecuteAgentOptions): AgentDefinition {
     async run(raw, ctx) {
       const input = parseInput(raw);
       const worldId = input.worldId === "" ? options.defaultWorldId : input.worldId;
-      // Cognate's local-world containment rule, applied before invocation: escape fails closed.
-      const cwd = resolveLocal(options.root, input.cwd);
+      const worldRoot = options.worldRoots[worldId];
+      if (!worldRoot) throw new Error(`unknown execution world: ${worldId}`);
+      // Containment rule applied before invocation: escape fails closed (string math — DEBT D-003).
+      const cwd = resolveLocal(worldRoot, input.cwd);
 
       const executionId = await ctx.step("execution.id", () => crypto.randomUUID());
       const startedAt = await ctx.step("clock.started", () => new Date().toISOString());
@@ -64,7 +66,7 @@ export function executeAgent(options: ExecuteAgentOptions): AgentDefinition {
       }));
 
       try {
-        const pre = await ctx.invoke("world.snapshot", json({}));
+        const pre = await ctx.invoke("world.snapshot", json({ worldId }));
         if (!isWorldSnapshot(pre)) throw new Error("world.snapshot returned an unexpected shape");
 
         const result = (await ctx.invoke("process.exec", json({
@@ -74,7 +76,7 @@ export function executeAgent(options: ExecuteAgentOptions): AgentDefinition {
           timeoutMs: input.timeoutMs ?? options.defaultTimeoutMs,
         }))) as unknown as ExecResultLike;
 
-        const post = await ctx.invoke("world.snapshot", json({}));
+        const post = await ctx.invoke("world.snapshot", json({ worldId }));
         if (!isWorldSnapshot(post)) throw new Error("world.snapshot returned an unexpected shape");
 
         const effects = deriveEffects(pre as WorldSnapshot, post as WorldSnapshot);

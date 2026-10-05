@@ -5,11 +5,12 @@
 export type ObservationMethod = string;
 
 export interface FileObservation {
-  /** Path relative to the workspace root, `/`-separated. */
+  /** Path relative to the world's workspace root, `/`-separated. Identity = (worldId, path). */
   readonly path: string;
   readonly kind: "file" | "directory" | "other";
   readonly size: number;
-  readonly mtimeMs: number;
+  /** Provider-owned staleness token (changes when content changes); opaque above the provider. */
+  readonly version: string;
 }
 
 export interface GitObservation {
@@ -53,8 +54,41 @@ export interface UnknownScope {
 
 export type Scoped<T> = ScopeObservation<T> | UnknownScope;
 
+/**
+ * Structural port shapes (matching Cognate's FileSystemPort/ProcessPort subsets) so the
+ * mechanism layer can observe ANY execution world without importing the framework.
+ */
+export interface FileStatLike {
+  readonly kind: "file" | "directory" | "other";
+  readonly size: number;
+  readonly version: string;
+}
+
+export interface FilePort {
+  stat(path: string): Promise<FileStatLike | undefined>;
+  list(path: string): Promise<readonly { readonly name: string; readonly kind: "file" | "directory" | "other" }[]>;
+}
+
+export interface ProcessPort {
+  exec(spec: { readonly argv: readonly string[]; readonly cwd: string; readonly timeoutMs?: number }): Promise<{
+    readonly stdout: string;
+    readonly stderr: string;
+    readonly exitCode: number;
+    readonly timedOut: boolean;
+  }>;
+}
+
+/** Which physical world facts were observed in — provenance, never normalized away. */
+export interface WorldProvenance {
+  readonly worldId: string;
+  readonly kind: string;
+  /** Provider-safe identity (host, port, username, auth kind, host key…); never credentials. */
+  readonly metadata: Readonly<Record<string, string>>;
+}
+
 export interface WorldSnapshot {
   readonly observedAt: string;
+  readonly world: WorldProvenance;
   readonly root: string;
   readonly walk: { readonly method: string; readonly truncated: boolean; readonly excluded: readonly string[] };
   readonly files: readonly FileObservation[];
@@ -89,6 +123,8 @@ export type EffectKind =
 
 export interface Effect {
   readonly kind: EffectKind;
+  /** Resource identity is the pair (worldId, target) — equal paths in different worlds are different resources. */
+  readonly worldId: string;
   readonly target: string;
   readonly before?: unknown;
   readonly after?: unknown;
@@ -173,6 +209,7 @@ export interface WorldStateView {
   readonly ports: Scoped<PortObservation>;
   readonly lastExecution: {
     readonly executionId: string;
+    readonly worldId: string;
     readonly source: ExecutionSource;
     readonly command: string;
     readonly exitCode: number | null;

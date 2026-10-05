@@ -75,6 +75,62 @@ world view, and reload/restart preserve durable history.
   buttons. The inverse seam (external tools → Cognate `RemoteCapabilityOffer`) is typed and
   test-covered but deliberately not built (D2).
 
+## Execution worlds (Phase 2 invariant)
+
+> A semantic capability describes **what** is being done; the execution world/provider determines
+> **where** it happens.
+
+```
+                SAME CAPABILITY: process.exec
+                          │
+              execution-world resolution (worldId)
+                    /                \
+             local provider      ssh provider
+                    │                │
+              local process     remote process (ssh2)
+                    \                /
+             SAME execution · effect · evidence model
+             (world/provider/host provenance differs — never normalized away)
+```
+
+- **No `ssh.*` semantics anywhere.** `worldId` is an *input property* of `agent.execute`,
+  `process.exec`, `world.snapshot`, and the WebMCP `execute_command` tool (an architecture test
+  forbids provider references in the semantic layer).
+- **Providers** are Cognate `ExecutionWorldProvider`s registered in ONE registry
+  (`src/app/worlds.ts` is the only place provider mechanics live): `localExecutionWorld`
+  (root-contained) and `sshExecutionWorld` (SFTP fs + remote exec, mandatory host-key pinning,
+  ProxyJump-capable, fail-closed — `@cognate/execution-ssh`). WSL is a later drop-in.
+- **Resource identity = `(worldId, path)`** — `semantic-world-proof.txt` in `local` and in
+  `ssh-test` are different resources; effects and evidence carry the world.
+- **Remote effects are evidence-backed**: snapshots before/after the execution through the
+  world's own ports (SFTP walk + remote git), deriving `file.created` with remote provenance —
+  exit code 0 is never treated as proof of side effects.
+- **Authority:** capability grants are explicit (kernel policy); **world registration is the
+  grant boundary** — unregistered worlds fail closed (`WorldUnavailableError`), and SSH
+  credentials stay provider-side (agent/key-path/password-env references; `metadata` exposes
+  only the auth *kind* + host-key fingerprint). Per-world policy is a known gap (DEBT D-002).
+
+### SSH world configuration (`gsterm.toml`)
+
+```toml
+[worlds.ssh-test]
+kind = "ssh"
+display = "SSH test box"
+host = "127.0.0.1"
+port = 2222
+username = "tester"
+root = "/home/tester/gs-workspace"
+auth = "agent"                            # or "key:~/.ssh/id_ed25519" / "password-env:MY_VAR"
+host_key_fingerprints = ["SHA256:..."]    # pin the host key (required) …
+host_keys_file = "~/.ssh/known_hosts"     # … and/or a known_hosts file
+```
+
+To run the same-capability proof against a **real** SSH host: configure a world as above, then
+`bun run dev`, pick the world in the cockpit selector, and run
+`sh -lc "printf hello > semantic-world-proof.txt"` in both worlds from the structured runner
+(or the WebMCP `execute_command` tool with `worldId`). The inspector shows which world handled
+each execution; effects carry per-world provenance.
+
 ## Decisions worth preserving
 
 1. **`setsid` around the shell.** `Bun.spawn({terminal})` (Bun 1.4.0) does not session-lead the
@@ -101,7 +157,16 @@ world view, and reload/restart preserve durable history.
   between-settlement external changes surface at the next observation.
 - Effect diffs are scoped to workspace files (excluding `.git`, `node_modules`, `.cognate`),
   session-tree processes, and session-attributed ports; other effects are unobserved, not false.
+- Remote (SSH) worlds observe files + git through the provider ports; remote processes/ports are
+  honestly `unknown` (session-tree attribution is a local-PTY concept) — DEBT D-010.
+- Local `exec` timeout/abort kills the spawned process but not its process group (grandchildren
+  can hold stdio pipes) while the SSH supervisor kills the group — DEBT D-031.
+- SSH worlds are explicit config; `~/.ssh/config` aliases are not resolved (DEBT D-009).
 - The dev-token authenticator is a development boundary, not production auth.
+
+Known debt is tracked durably in [`.agents/DEBT.md`](.agents/DEBT.md) (30+ items with owners and
+statuses), including the Cognate observation-ingest upstream candidate (D-001) and the
+per-world policy gap (D-002).
 
 ## Deliberate next seams (not built)
 

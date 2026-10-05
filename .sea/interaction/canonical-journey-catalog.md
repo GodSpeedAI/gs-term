@@ -91,8 +91,12 @@ WebMCP tool, future agent); **Observer** = server-side mechanism watchers (fs/gi
   effects claimed); timeout via `ExecSpec.timeoutMs` (`timedOut` is evidence, not assumption);
   caller cancellation → run cancelled, process terminated.
 - **Next decisions / affordances:** inspect (J5), repeat, or observe future effects (J3).
-- **Known variants:** J2-W WebMCP specialization; future worlds (ssh/wsl/browser) are provider
-  swaps on the same capability — catalogued seam, not implemented.
+- **Known variants:** J2-W WebMCP specialization; **J2-X world variant (Phase 2)** — the same
+  journey executes in any *registered execution world* (`worldId` input property: `local`,
+  `ssh-test`, later `wsl`): identical capability/argv/actor/effect vocabulary, with world,
+  provider, host, and evidence provenance differing and never normalized away (resource identity
+  = `(worldId, path)`); future worlds (ssh/wsl/browser) are provider swaps on the same capability
+  — catalogued seam, not implemented.
 
 ## J3 — world-state-reconciliation
 

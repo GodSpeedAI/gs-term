@@ -24,3 +24,17 @@ scrollback_bytes = 262144
 [execution]
 # Default structured-execution timeout (ms).
 timeout_ms = 30000
+
+# Additional execution worlds — SAME `process.exec` capability, different provider.
+# Example SSH world (uncomment and edit; credentials are references, never values):
+# [worlds.ssh-test]
+# kind = "ssh"
+# display = "SSH test box"
+# host = "127.0.0.1"
+# port = 2222
+# username = "tester"
+# root = "/home/tester/gs-workspace"
+# auth = "agent"                      # or "key:~/.ssh/id_ed25519" or "password-env:MY_VAR"
+# host_key_fingerprints = ["SHA256:..."]   # pin the host key (required) ...
+# host_keys_file = "~/.ssh/known_hosts"    # ... and/or a known_hosts file
+# default_timeout_ms = 30000

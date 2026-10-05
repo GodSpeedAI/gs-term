@@ -7,6 +7,8 @@ export interface ExecuteCommandArgs {
   readonly argv: readonly string[];
   readonly cwd?: string;
   readonly timeoutMs?: number;
+  /** Execution world id (an input property of the SAME operation; not provider-specific). */
+  readonly worldId?: string;
 }
 
 export interface ToolInvoker {
@@ -37,8 +39,9 @@ export const CAPABILITY_DESCRIPTORS: readonly ToolDescriptor[] = [
       type: "object",
       properties: {
         argv: { type: "array", items: { type: "string" }, description: "Program and arguments, e.g. [\"touch\", \"demo.txt\"]" },
-        cwd: { type: "string", description: "Working directory inside the workspace root (default: workspace root)" },
+        cwd: { type: "string", description: "Working directory inside the world's workspace root (default: world root)" },
         timeoutMs: { type: "number", description: "Execution timeout in milliseconds" },
+        worldId: { type: "string", description: "Execution world to run in (default: the configured default world)" },
       },
       required: ["argv"],
     },
@@ -52,6 +55,7 @@ export const CAPABILITY_DESCRIPTORS: readonly ToolDescriptor[] = [
           argv: argv as string[],
           ...(typeof args.cwd === "string" ? { cwd: args.cwd } : {}),
           ...(typeof args.timeoutMs === "number" ? { timeoutMs: args.timeoutMs } : {}),
+          ...(typeof args.worldId === "string" ? { worldId: args.worldId } : {}),
         },
         "webmcp",
       );

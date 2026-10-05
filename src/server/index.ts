@@ -66,6 +66,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<GsT
   const bridge = new ObservationBridge({
     service: app.runtime.service,
     sessionId: config.session.id,
+    sessionWorldId: config.world.id,
     root,
     shell: config.session.shell,
     sessionPid: () => session.shellPid,
@@ -103,6 +104,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<GsT
           threadId: bridge.threadId(),
           tenant: "local",
           worldId: config.world.id,
+          defaultWorldId: config.world.id,
+          worlds: app.worlds.registry.list(),
           root,
           tools: CAPABILITY_DESCRIPTORS.map((descriptor) => ({ name: descriptor.name, description: descriptor.description, inputSchema: descriptor.inputSchema })),
         });

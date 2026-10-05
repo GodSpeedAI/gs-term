@@ -33,12 +33,23 @@ resource — it is mechanism, not meaning.
 Both agents are deterministic given recorded steps (`ctx.step`, `ctx.invoke`); ids minted inside
 steps; no bare clock/randomness.
 
+## World identity (Phase 2)
+
+- ONE capability `process.exec` (+ `world.snapshot`) for every execution world; `worldId` in the
+  input selects the provider (Cognate `ExecutionWorldProvider` registry: local + ssh; wsl later).
+- **Resource identity = `(worldId, path)`** — equal paths in different worlds are different
+  resources. `Effect.worldId` + snapshot `world: {worldId, kind, metadata}` carry provenance;
+  metadata is provider-safe (host/port/username/auth kind/host key), never credentials.
+- `world.snapshot` input: `{worldId?}` (default: the session world). Evidence structure is
+  identical across worlds; `how`/`refs` carry the world. Remote processes/ports are honestly
+  `unknown` (D-010).
+
 ## Event vocabulary (typed semantic events; PTY bytes never appear here)
 
 - `execution.started` — `{executionId, source, surface, worldId, command, argv?, cwd, startedAt, actor}`
 - `effect.observed` — `{executionId, observedAt, effects: Effect[]}` where
-  `Effect = {kind: "file.created"|"file.modified"|"file.deleted"|"git.dirty"|"git.clean"|"process.started"|"process.stopped"|"port.opened"|"port.closed"|"none", target, before?, after?, evidence: Evidence[]}`
-  and `Evidence = {what, how, confidence: "observed"|"derived"|"unknown", refs: string[]}`
+  `Effect = {kind: …, worldId, target, before?, after?, evidence: Evidence[]}` and
+  `Evidence = {what, how, confidence: "observed"|"derived"|"unknown", refs: string[]}`
 - `execution.completed` — `{executionId, exitCode|exitCode:null, timedOut?, endedAt, durationMs, output: {stdout?, stderr?}| "unknown", effectsCount, settled: "observed"|"derived"}`
 - `execution.failed` — `{executionId, failedAt, reason}` — explicit non-settlement when a run
   cannot reach `execution.completed` (e.g. policy denial); rethrown so run status stays `failed`.

@@ -30,7 +30,7 @@ export function createUiInvoker(client: CognateClientLike, options: UiInvokerOpt
         {
           argv: [...args.argv],
           cwd: args.cwd ?? ".",
-          worldId: options.worldId,
+          worldId: args.worldId ?? options.worldId,
           source,
           surface: options.surfaceFor(source),
           requestedBy: source,

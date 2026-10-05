@@ -26,6 +26,7 @@ function config(root: string, port: number): GsTermConfig {
     world: { id: "local", root },
     session: { id: "restart-test", shell: "bash", cols: 80, rows: 24, scrollbackBytes: 65_536 },
     execution: { timeoutMs: 10_000 },
+    worlds: {},
   };
 }
 

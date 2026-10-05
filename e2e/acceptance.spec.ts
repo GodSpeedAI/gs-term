@@ -2,6 +2,7 @@
 import { expect, test } from "@playwright/test";
 
 const WORKSPACE = "/tmp/gsterm-e2e-workspace";
+const REMOTE_WORKSPACE = "/tmp/gsterm-e2e-remote";
 
 async function waitForTerminalLive(page: import("@playwright/test").Page): Promise<void> {
   await expect(page.getByTestId("terminal-surface")).toBeVisible({ timeout: 20_000 });
@@ -118,5 +119,56 @@ test("acceptance G: reload reconnects the terminal and durable history persists"
   await expect(page.locator(".exec-command", { hasText: "semantic-proof-human.txt" }).first()).toBeVisible({ timeout: 25_000 });
   await expect(page.locator(".exec-command", { hasText: "semantic-proof-webmcp.txt" }).first()).toBeVisible();
   await expect(page.getByTestId("timeline-events")).toBeVisible();
+});
+
+test("Phase 2 E: world switching — same semantic operation, visible world provenance", async ({ page }) => {
+  await page.goto("/");
+  await waitForTerminalLive(page);
+
+  // Target the SSH world (availability probed through the existing world.snapshot capability).
+  await page.getByTestId("world-select").selectOption("ssh-test");
+  await expect(page.getByTestId("world-probe")).toContainText("available", { timeout: 20_000 });
+
+  await page.getByTestId("structured-run-input").fill("pwd");
+  await page.getByTestId("structured-run-button").click();
+  await expect(page.locator(".exec-command", { hasText: "pwd" }).first()).toBeVisible({ timeout: 25_000 });
+  await page.locator(".exec-command", { hasText: "pwd" }).first().click();
+  await expect(page.getByTestId("inspector-world")).toHaveText("ssh-test");
+  await expect(page.getByTestId("inspector-provider")).toHaveText("ssh");
+  await expect(page.getByTestId("execution-inspector")).toContainText(REMOTE_WORKSPACE);
+
+  // The same operation on the local world — the inspector names where it actually ran.
+  await page.getByTestId("inspector-back").click();
+  await page.getByTestId("world-select").selectOption("local");
+  await page.getByTestId("structured-run-input").fill("pwd");
+  await page.getByTestId("structured-run-button").click();
+  await new Promise((resolve) => setTimeout(resolve, 1_500)); // let the newer run settle (newest row first)
+  await page.locator(".exec-command", { hasText: "pwd" }).first().click();
+  await expect(page.getByTestId("inspector-world")).toHaveText("local");
+  await expect(page.getByTestId("inspector-provider")).toHaveText("local");
+});
+
+test("Phase 2 F: WebMCP runs the SAME tool against an authorized world (no ssh tool)", async ({ page }) => {
+  await page.goto("/");
+  await waitForTerminalLive(page);
+
+  const result = await page.evaluate(async () => {
+    try {
+      const mc = (document as unknown as { modelContext?: { getTools(): Promise<unknown[]>; executeTool(tool: unknown, inputArgsJson: string): Promise<unknown> } }).modelContext;
+      if (!mc) return { error: "document.modelContext missing", names: [] as string[], executed: "" };
+      const tools = await mc.getTools();
+      const names = tools.map((tool) => (tool as { name?: string }).name ?? String(tool));
+      const execTool = tools.find((tool) => ((tool as { name?: string }).name ?? String(tool)) === "execute_command");
+      if (!execTool) return { error: `no execute_command tool in ${names.join(",")}`, names, executed: "" };
+      const executed = await mc.executeTool(execTool, JSON.stringify({ argv: ["pwd"], worldId: "ssh-test" }));
+      return { error: "", names, executed: JSON.stringify(executed) };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error), names: [] as string[], executed: "" };
+    }
+  });
+
+  expect(result.error).toBe("");
+  expect(result.names.some((name) => name.includes("ssh"))).toBe(false); // the tool set never mentions providers
+  expect(result.executed).toContain(REMOTE_WORKSPACE);
 });
 

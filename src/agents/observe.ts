@@ -8,6 +8,11 @@ import { isWorldSnapshot, json, requireString, truncateOutput } from "./shared.t
 
 export const OBSERVE_AGENT_ID = "agent.observe";
 
+export interface ObserveAgentOptions {
+  /** The world hosting the PTY session — observed executions happen there. */
+  readonly sessionWorldId: string;
+}
+
 function parseInput(raw: unknown): ObserveAgentInput {
   const input = raw as Partial<ObserveAgentInput> | null;
   if (typeof input !== "object" || input === null) throw new Error("invalid input: expected an object");
@@ -29,7 +34,7 @@ function parseInput(raw: unknown): ObserveAgentInput {
   };
 }
 
-export function observeAgent(): AgentDefinition {
+export function observeAgent(options: ObserveAgentOptions): AgentDefinition {
   return {
     id: OBSERVE_AGENT_ID,
     version: "1.0.0",
@@ -41,7 +46,7 @@ export function observeAgent(): AgentDefinition {
         executionId,
         source: "pty",
         surface: input.surface,
-        worldId: "pty-session",
+        worldId: options.sessionWorldId,
         command: input.command,
         cwd: input.cwd,
         startedAt: input.startedAt,
@@ -49,7 +54,7 @@ export function observeAgent(): AgentDefinition {
       }));
 
       try {
-        const post = (await ctx.invoke("world.snapshot", json({}))) as unknown as WorldSnapshot;
+        const post = (await ctx.invoke("world.snapshot", json({ worldId: options.sessionWorldId }))) as unknown as WorldSnapshot;
         if (!isWorldSnapshot(post)) throw new Error("world.snapshot returned an unexpected shape");
 
         const effects = deriveEffects(input.preSnapshot, post);

@@ -16,6 +16,7 @@ export interface ExecutionEntry {
   readonly runId: string;
   readonly correlationId: string;
   readonly status: "started" | "settled" | "failed" | "cancelled";
+  readonly worldId?: string;
   readonly source?: string;
   readonly surface?: string;
   readonly command?: string;
@@ -73,6 +74,7 @@ export const executionsProjection: Projection = {
             runId,
             correlationId: event.correlationId,
             status: "started",
+            worldId: p.worldId,
             source: p.source,
             surface: p.surface,
             command: p.command,

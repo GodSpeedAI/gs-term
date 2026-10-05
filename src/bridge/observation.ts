@@ -18,6 +18,8 @@ function isExecutionSource(value: string | undefined): value is "pty" | "ui" | "
 export interface ObservationBridgeOptions {
   readonly service: RuntimeService;
   readonly sessionId: string;
+  /** The execution world hosting the PTY session (observed executions + world view live here). */
+  readonly sessionWorldId: string;
   readonly root: string;
   readonly shell: string;
   readonly sessionPid: () => number | undefined;
@@ -28,6 +30,7 @@ export interface ObservationBridgeOptions {
 
 interface TerminalRunOutput {
   readonly executionId?: string;
+  readonly worldId?: string;
   readonly command?: string;
   readonly exitCode?: number | null;
   readonly endedAt?: string;
@@ -110,7 +113,7 @@ export class ObservationBridge {
 
   private snapshot(): Promise<WorldSnapshot> {
     const pending = this.options.service
-      .invoke(this.caller, { capability: "world.snapshot", input: {} })
+      .invoke(this.caller, { capability: "world.snapshot", input: json({ worldId: this.options.sessionWorldId }) })
       .then((result) => result as unknown as WorldSnapshot);
     // Rotated/abandoned snapshots must never surface as unhandled rejections (shutdown races).
     pending.catch(() => undefined);
@@ -156,6 +159,7 @@ export class ObservationBridge {
         lastExecution && lastExecution.executionId
           ? {
               executionId: lastExecution.executionId,
+              worldId: lastExecution.worldId ?? this.options.sessionWorldId,
               source: isExecutionSource(lastExecution.source) ? lastExecution.source : "pty",
               command: lastExecution.command ?? "",
               exitCode: lastExecution.exitCode ?? null,

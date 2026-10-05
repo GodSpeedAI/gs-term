@@ -34,6 +34,7 @@ function config(root: string): GsTermConfig {
     world: { id: "local", root },
     session: { id: "j1-test", shell: "bash", cols: 80, rows: 24, scrollbackBytes: 65_536 },
     execution: { timeoutMs: 10_000 },
+    worlds: {},
   };
 }
 
@@ -66,6 +67,7 @@ beforeAll(async () => {
   bridge = new ObservationBridge({
     service: app.runtime.service,
     sessionId: "j1",
+    sessionWorldId: "local",
     root: workspace,
     shell: "bash",
     sessionPid: () => session?.shellPid,

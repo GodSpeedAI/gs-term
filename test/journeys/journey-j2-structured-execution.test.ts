@@ -30,6 +30,7 @@ function config(root: string): GsTermConfig {
     world: { id: "local", root },
     session: { id: "j2-test", shell: "bash", cols: 80, rows: 24, scrollbackBytes: 65_536 },
     execution: { timeoutMs: 10_000 },
+    worlds: {},
   };
 }
 

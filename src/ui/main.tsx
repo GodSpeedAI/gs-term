@@ -17,9 +17,17 @@ import { pageModelContext, projectCapabilitiesToWebMCP } from "../webmcp/project
 import { isMarkerKey } from "../projections/executions.ts";
 import type { WorldStateView } from "../semantic/contracts.ts";
 
+interface WorldDescriptorView {
+  readonly worldId: string;
+  readonly kind: string;
+  readonly metadata: Readonly<Record<string, string>>;
+}
+
 interface Meta {
   readonly sessionId: string;
   readonly threadId: string;
+  readonly defaultWorldId: string;
+  readonly worlds: readonly WorldDescriptorView[];
   readonly worldId: string;
   readonly root: string;
   readonly tools: readonly { readonly name: string }[];
@@ -52,6 +60,8 @@ function App({ meta, client }: { readonly meta: Meta; readonly client: ReturnTyp
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   const [running, setRunning] = useState(false);
   const [termStatus, setTermStatus] = useState<ConnectionStatus>("connecting");
+  const [worldId, setWorldId] = useState(meta.defaultWorldId);
+  const [worldProbe, setWorldProbe] = useState<{ readonly status: "checking" | "available" | "unavailable"; readonly detail: string }>({ status: "checking", detail: "" });
 
   const projection = useMemo(() => client.projection("executions"), [client]);
   const world = useMemo(() => client.threadSharedState(meta.threadId), [client, meta.threadId]);
@@ -81,6 +91,24 @@ function App({ meta, client }: { readonly meta: Meta; readonly client: ReturnTyp
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Availability of the selected world = an on-demand `world.snapshot` (existing capability):
+  // available means "facts were just observed there", unavailable carries the real reason.
+  useEffect(() => {
+    let cancelled = false;
+    setWorldProbe({ status: "checking", detail: "" });
+    void client
+      .invoke("world.snapshot", { worldId })
+      .then(() => {
+        if (!cancelled) setWorldProbe({ status: "available", detail: `observed ${new Date().toLocaleTimeString()}` });
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setWorldProbe({ status: "unavailable", detail: error instanceof Error ? error.message : String(error) });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, worldId]);
 
   const entries = useMemo<ExecutionEntryView[]>(() => {
     if (!projectionRows) return [];
@@ -115,10 +143,10 @@ function App({ meta, client }: { readonly meta: Meta; readonly client: ReturnTyp
   );
 
   const onRun = useCallback(
-    (command: string) => {
+    (command: string, targetWorld: string) => {
       setRunning(true);
       void invoker
-        .executeCommand({ argv: splitArgv(command) }, "ui")
+        .executeCommand({ argv: splitArgv(command), worldId: targetWorld }, "ui")
         .catch((error) => console.error("structured run failed:", error))
         .finally(() => setRunning(false));
     },
@@ -155,9 +183,20 @@ function App({ meta, client }: { readonly meta: Meta; readonly client: ReturnTyp
         <TerminalPanel sessionId={meta.sessionId} onStatus={setTermStatus} />
         <aside className="sidebar">
           {selected ? (
-            <Inspector entry={selected} events={selectedEvents} output={selectedOutput} onBack={() => setSelectedId(undefined)} />
+            <Inspector entry={selected} events={selectedEvents} output={selectedOutput} worlds={meta.worlds} onBack={() => setSelectedId(undefined)} />
           ) : (
-            <ExecutionsPanel entries={entries} selectedId={selectedId} onSelect={setSelectedId} onRun={onRun} running={running} now={Date.now()} />
+            <ExecutionsPanel
+              entries={entries}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              onRun={onRun}
+              running={running}
+              now={Date.now()}
+              worlds={meta.worlds}
+              selectedWorld={worldId}
+              onWorldChange={setWorldId}
+              worldProbe={worldProbe}
+            />
           )}
           <WorldPanel state={worldState} root={meta.root} now={Date.now()} />
           <TimelinePanel events={events} />

@@ -20,7 +20,9 @@
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "ssh2": "1.17.0",
+    "@cognate/execution-ssh": "file:./.cognate/vendor/cognate-execution-ssh-0.0.0.tgz"
   },
   "overrides": {
     "@cognate/cli": "file:./.cognate/vendor/cognate-cli-0.0.0.tgz",
@@ -49,13 +51,15 @@
     "@cognate/continuations": "file:./.cognate/vendor/cognate-continuations-0.0.0.tgz",
     "@cognate/kernel-cordis": "file:./.cognate/vendor/cognate-kernel-cordis-0.0.0.tgz",
     "@cognate/store-memory": "file:./.cognate/vendor/cognate-store-memory-0.0.0.tgz",
-    "@cognate/store-sqlite": "file:./.cognate/vendor/cognate-store-sqlite-0.0.0.tgz"
+    "@cognate/store-sqlite": "file:./.cognate/vendor/cognate-store-sqlite-0.0.0.tgz",
+    "@cognate/execution-ssh": "file:./.cognate/vendor/cognate-execution-ssh-0.0.0.tgz"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@types/bun": "^1.4.2",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.2.2",
+    "@types/ssh2": "1.15.6",
     "typescript": "5"
   }
 }

@@ -9,6 +9,7 @@ export interface ExecutionEntryView {
   readonly runId: string;
   readonly correlationId: string;
   readonly status: "started" | "settled" | "failed" | "cancelled";
+  readonly worldId?: string;
   readonly source?: ExecutionSource | string;
   readonly surface?: string;
   readonly command?: string;
@@ -24,13 +25,23 @@ export interface ExecutionEntryView {
   readonly reason?: string;
 }
 
+export interface WorldView {
+  readonly worldId: string;
+  readonly kind: string;
+  readonly metadata: Readonly<Record<string, string>>;
+}
+
 export interface ExecutionsPanelProps {
   readonly entries: readonly ExecutionEntryView[];
   readonly selectedId: string | undefined;
   readonly onSelect: (executionId: string) => void;
-  readonly onRun: (command: string) => void;
+  readonly onRun: (command: string, worldId: string) => void;
   readonly running: boolean;
   readonly now: number;
+  readonly worlds: readonly WorldView[];
+  readonly selectedWorld: string;
+  readonly onWorldChange: (worldId: string) => void;
+  readonly worldProbe: { readonly status: "checking" | "available" | "unavailable"; readonly detail: string };
 }
 
 const FILTERS: readonly { id: string; label: string }[] = [
@@ -45,7 +56,7 @@ export function statusDot(entry: ExecutionEntryView): string {
   return entry.status;
 }
 
-export function ExecutionsPanel({ entries, selectedId, onSelect, onRun, running, now }: ExecutionsPanelProps): JSX.Element {
+export function ExecutionsPanel({ entries, selectedId, onSelect, onRun, running, now, worlds, selectedWorld, onWorldChange, worldProbe }: ExecutionsPanelProps): JSX.Element {
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [command, setCommand] = useState("");
@@ -72,6 +83,27 @@ export function ExecutionsPanel({ entries, selectedId, onSelect, onRun, running,
       </div>
 
       <div className="runner">
+        <select
+          className="world-select"
+          data-testid="world-select"
+          value={selectedWorld}
+          onChange={(event) => onWorldChange(event.target.value)}
+          title="Execution world: the same semantic capability, a different provider"
+        >
+          {worlds.map((world) => (
+            <option key={world.worldId} value={world.worldId}>
+              {world.worldId} · {world.kind}
+              {world.metadata.host ? ` · ${world.metadata.host}` : ""}
+            </option>
+          ))}
+        </select>
+        <span
+          className={`state-chip ${worldProbe.status === "available" ? "ok" : worldProbe.status === "unavailable" ? "danger" : "neutral"}`}
+          data-testid="world-probe"
+          title={worldProbe.detail}
+        >
+          {worldProbe.status}
+        </span>
         <input
           data-testid="structured-run-input"
           placeholder="structured run: touch demo.txt  (⌘⏎)"
@@ -79,7 +111,7 @@ export function ExecutionsPanel({ entries, selectedId, onSelect, onRun, running,
           onChange={(event) => setCommand(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && command.trim() !== "" && !running) {
-              onRun(command.trim());
+              onRun(command.trim(), selectedWorld);
               setCommand("");
             }
           }}
@@ -91,7 +123,7 @@ export function ExecutionsPanel({ entries, selectedId, onSelect, onRun, running,
           data-testid="structured-run-button"
           disabled={running || command.trim() === ""}
           onClick={() => {
-            onRun(command.trim());
+            onRun(command.trim(), selectedWorld);
             setCommand("");
           }}
         >

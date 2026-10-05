@@ -34,6 +34,7 @@ function config(root: string): GsTermConfig {
     world: { id: "local", root },
     session: { id: "j3-test", shell: "bash", cols: 80, rows: 24, scrollbackBytes: 65_536 },
     execution: { timeoutMs: 10_000 },
+    worlds: {},
   };
 }
 
@@ -86,6 +87,7 @@ beforeAll(async () => {
   bridge = new ObservationBridge({
     service: app.runtime.service,
     sessionId: "j3",
+    sessionWorldId: "local",
     root: workspace,
     shell: "bash",
     sessionPid: () => session?.shellPid,
@@ -156,10 +158,17 @@ describe("J3 world-state-reconciliation", () => {
   });
 
   test("honesty: no-repo and unknown are distinct states, never false", async () => {
-    const nonRepo = await observeGit(homeDir);
+    const local = app!.worlds.registry.get("local");
+    const nonRepo = await observeGit(local.process, homeDir);
     expect(nonRepo.status).toBe("no-repo");
 
-    const snapshot = await takeWorldSnapshot({ root: workspace, sessionPid: undefined });
+    const snapshot = await takeWorldSnapshot({
+      world: { worldId: "local", kind: local.kind, metadata: local.metadata },
+      fileSystem: local.fileSystem,
+      process: local.process,
+      root: workspace,
+      sessionPid: undefined,
+    });
     expect(snapshot.processes).toHaveProperty("status", "unknown");
     expect((snapshot.processes as { reason: string }).reason.length).toBeGreaterThan(0);
     expect(snapshot.git.status).toBe("observed"); // git observed even without processes

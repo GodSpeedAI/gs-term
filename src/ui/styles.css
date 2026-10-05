@@ -483,6 +483,21 @@ pre.payload {
 
 .runner input:focus { border-color: var(--accent); }
 
+.world-select {
+  height: 26px;
+  padding: 0 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text-0);
+  font-size: 11px;
+  outline: none;
+  max-width: 190px;
+  cursor: pointer;
+}
+
+.world-select:focus { border-color: var(--accent); }
+
 .btn {
   appearance: none;
   height: 26px;

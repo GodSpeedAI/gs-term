@@ -1,7 +1,8 @@
 // Runtime composition: the single place where the mechanism layer is handed to Cognate.
 // Hand-composed `createRuntime` (documented alternative to profiles — see README).
-import { createExecutionWorldRegistry, executionWorldsComponent, localExecutionWorld, type ExecutionWorldRegistry } from "@cognate/execution";
+// ONE registry of execution worlds behind ONE `process.exec` — worldId selects the provider.
 import { createRuntime, type Runtime } from "@cognate/runtime-bun";
+import { executionWorldsComponent } from "@cognate/execution";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { executeAgent } from "../agents/execute.ts";
@@ -12,6 +13,7 @@ import type { GsTermConfig } from "../config.ts";
 import { workspaceRoot } from "../config.ts";
 import { loadGsTermModel, type SemanticModel } from "./bindings.ts";
 import { gstermActions, gstermPolicy } from "./policy.ts";
+import { createExecutionWorlds, type ExecutionWorlds } from "./worlds.ts";
 
 export interface GsTermRuntimeOptions {
   readonly config: GsTermConfig;
@@ -25,7 +27,8 @@ export interface GsTermRuntimeOptions {
 
 export interface GsTermRuntime {
   readonly runtime: Runtime;
-  readonly registry: ExecutionWorldRegistry;
+  /** The execution worlds: registry (providers + roots) and the world-scoped observer. */
+  readonly worlds: ExecutionWorlds;
   readonly model: SemanticModel;
   readonly root: string;
   close(): Promise<void>;
@@ -36,36 +39,37 @@ export async function createGsTermRuntime(options: GsTermRuntimeOptions): Promis
   const domainPath = resolve(options.domainRoot ?? process.cwd(), "domain/interaction-model.sea");
   const model = loadGsTermModel(readFileSync(domainPath, "utf8"), "domain/interaction-model.sea");
 
-  const registry = createExecutionWorldRegistry([
-    localExecutionWorld({
-      worldId: options.config.world.id,
-      metadata: { root, host: "localhost" },
-      timeoutMs: options.config.execution.timeoutMs,
-    }),
-  ]);
-
   const sessionPid = options.sessionPid ?? (() => undefined);
+  const worlds = createExecutionWorlds({
+    config: options.config,
+    localRoot: root,
+    sessionWorldId: options.config.world.id,
+    sessionPid,
+  });
 
   const runtime = await createRuntime({
     store: options.store,
     policy: gstermPolicy(),
     actions: gstermActions(),
-    agents: [executeAgent({ root, defaultWorldId: options.config.world.id, defaultTimeoutMs: options.config.execution.timeoutMs }), observeAgent()],
+    agents: [
+      executeAgent({ worldRoots: worlds.roots, defaultWorldId: options.config.world.id, defaultTimeoutMs: options.config.execution.timeoutMs }),
+      observeAgent({ sessionWorldId: options.config.world.id }),
+    ],
     components: [
-      executionWorldsComponent(registry, model.executionSemanticRef ? { semanticRef: model.executionSemanticRef } : {}),
-      observersComponent({ root, sessionPid, ...(model.evidenceSemanticRef ? { semanticRef: model.evidenceSemanticRef } : {}) }),
+      executionWorldsComponent(worlds.registry, model.executionSemanticRef ? { semanticRef: model.executionSemanticRef } : {}),
+      observersComponent({ observer: worlds.observer, ...(model.evidenceSemanticRef ? { semanticRef: model.evidenceSemanticRef } : {}) }),
     ],
     projections: [{ projection: executionsProjection, public: true }],
   });
 
   return {
     runtime,
-    registry,
+    worlds,
     model,
     root,
     async close() {
       await runtime.close();
-      await registry.dispose();
+      await worlds.registry.dispose();
     },
   };
 }

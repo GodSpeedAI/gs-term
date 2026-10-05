@@ -25,6 +25,7 @@ function config(root: string): GsTermConfig {
     world: { id: "local", root },
     session: { id: "main", shell: "bash", cols: 80, rows: 24, scrollbackBytes: 65_536 },
     execution: { timeoutMs: 10_000 },
+    worlds: {},
   };
 }
 
@@ -44,12 +45,12 @@ function fakeContext(): { context: ModelContextLike; tools: WebMCPToolSpec[] } {
   return { context, tools };
 }
 
-function fakeInvoker(): ToolInvoker & { calls: { argv: readonly string[]; source: string }[] } {
-  const calls: { argv: readonly string[]; source: string }[] = [];
+function fakeInvoker(): ToolInvoker & { calls: { argv: readonly string[]; source: string; worldId?: string }[] } {
+  const calls: { argv: readonly string[]; source: string; worldId?: string }[] = [];
   return {
     calls,
     async executeCommand(args, source) {
-      calls.push({ argv: args.argv, source });
+      calls.push({ argv: args.argv, source, ...(args.worldId === undefined ? {} : { worldId: args.worldId }) });
       return { executionId: "exec_test", exitCode: 0, source };
     },
     async worldState() {
@@ -93,6 +94,18 @@ describe("WebMCP projection (J2-W)", () => {
     const executed = JSON.parse((await context.executeTool!(tools[0]!, JSON.stringify({ argv: "not-an-array" }))) as string) as { content: { text: string }[] };
     expect(executed.content[0]!.text).toContain("error");
     expect(invoker.calls.length).toBe(0);
+  });
+
+  test("execution world selection is an input property of the SAME tool (no ssh tool, ever)", async () => {
+    const { context, tools } = fakeContext();
+    const invoker = fakeInvoker();
+    const result = await projectCapabilitiesToWebMCP(context, invoker);
+    // No provider-specific tool may exist — the mandate's cheat guard, enforced.
+    expect(result.registered.some((name) => name.includes("ssh") || name.includes("local"))).toBe(false);
+
+    await context.executeTool!(tools[0]!, JSON.stringify({ argv: ["pwd"], worldId: "ssh-test" }));
+    expect(invoker.calls.at(-1)).toEqual({ argv: ["pwd"], source: "webmcp", worldId: "ssh-test" });
+
   });
 
   test("pageModelContext only speaks the current standard surface", () => {

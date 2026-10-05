@@ -11,10 +11,17 @@ export interface RunEventView {
   readonly payload: unknown;
 }
 
+export interface WorldView {
+  readonly worldId: string;
+  readonly kind: string;
+  readonly metadata: Readonly<Record<string, string>>;
+}
+
 export interface InspectorProps {
   readonly entry: ExecutionEntryView;
   readonly events: readonly RunEventView[];
   readonly output: { readonly stdout?: string; readonly stderr?: string } | "unknown" | undefined;
+  readonly worlds: readonly WorldView[];
   readonly onBack: () => void;
 }
 
@@ -25,6 +32,7 @@ function EffectCard({ effect }: { readonly effect: Effect }): JSX.Element {
         <span className={`state-chip ${effect.kind === "none" ? "neutral" : effect.kind.includes("deleted") || effect.kind.includes("stopped") || effect.kind.includes("closed") ? "warn" : "ok"}`}>
           {effect.kind}
         </span>
+        <span className="badge run" title="the world this effect occurred in">{effect.worldId}</span>
         <span className="effect-target">{effect.target}</span>
       </div>
       {effect.evidence.map((evidence, index) => (
@@ -42,7 +50,8 @@ function EffectCard({ effect }: { readonly effect: Effect }): JSX.Element {
   );
 }
 
-export function Inspector({ entry, events, output, onBack }: InspectorProps): JSX.Element {
+export function Inspector({ entry, events, output, worlds, onBack }: InspectorProps): JSX.Element {
+  const world = worlds.find((candidate) => candidate.worldId === entry.worldId);
   const copy = () => {
     void navigator.clipboard?.writeText(JSON.stringify({ entry, events, output }, null, 2));
   };
@@ -85,6 +94,18 @@ export function Inspector({ entry, events, output, onBack }: InspectorProps): JS
           <div className="stat-cell">
             <div className="stat-label">Ended</div>
             <div className="stat-value">{entry.endedAt ? new Date(entry.endedAt).toLocaleTimeString() : "—"}</div>
+          </div>
+          <div className="stat-cell">
+            <div className="stat-label">Execution world</div>
+            <div className="stat-value" data-testid="inspector-world">{entry.worldId ?? "—"}</div>
+          </div>
+          <div className="stat-cell">
+            <div className="stat-label">Provider</div>
+            <div className="stat-value" data-testid="inspector-provider">{world?.kind ?? "—"}</div>
+          </div>
+          <div className="stat-cell">
+            <div className="stat-label">Host / resource</div>
+            <div className="stat-value">{world?.metadata.host ?? "—"}</div>
           </div>
           <div className="stat-cell">
             <div className="stat-label">Cwd</div>

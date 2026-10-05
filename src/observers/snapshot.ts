@@ -1,31 +1,36 @@
-// Snapshot orchestrator: one coherent WorldSnapshot from the individual observers.
-// This is the single function the `world.snapshot` capability delegates to (via composition),
-// and the state view builder for world-state reconciliation (J3).
-import type { WorldSnapshot, WorldStateView } from "../semantic/contracts.ts";
-import { isScoped } from "../semantic/contracts.ts";
-import { walkWorkspace } from "./filesystem.ts";
+// Snapshot orchestrator: one coherent WorldSnapshot per world, gathered through that world's
+// provider ports (local, SSH, …) — SAME evidence shape everywhere, provenance says where.
+// Processes/ports are session-tree facts (a local-PTY concept, DEBT D-010): without a session
+// root pid they are honestly `unknown`, never invented.
+import type { FilePort, ProcessPort, WorldProvenance, WorldSnapshot, WorldStateView } from "../semantic/contracts.ts";
+import { walkWorldFiles } from "./filesystem.ts";
 import { observeGit } from "./git.ts";
 import { observeSessionPorts } from "./ports.ts";
 import { observeSessionProcesses } from "./processes.ts";
 
-export interface SnapshotOptions {
+export interface WorldSnapshotOptions {
+  readonly world: WorldProvenance;
+  readonly fileSystem: FilePort;
+  readonly process: ProcessPort;
   readonly root: string;
+  /** Live session root pid — only meaningful for the world hosting the PTY session. */
   readonly sessionPid?: number | undefined;
 }
 
-export async function takeWorldSnapshot(options: SnapshotOptions): Promise<WorldSnapshot> {
+export async function takeWorldSnapshot(options: WorldSnapshotOptions): Promise<WorldSnapshot> {
   const observedAt = new Date().toISOString();
   const [walk, git, processes] = await Promise.all([
-    walkWorkspace(options.root),
-    observeGit(options.root),
+    walkWorldFiles(options.fileSystem, options.root),
+    observeGit(options.process, options.root),
     observeSessionProcesses(options.sessionPid),
   ]);
-  const pids = isScoped(processes) ? new Set(processes.entries.map((entry) => entry.pid)) : new Set<number>();
+  const pids = "entries" in processes ? new Set(processes.entries.map((entry) => entry.pid)) : new Set<number>();
   const ports = await observeSessionPorts(pids);
   return {
     observedAt,
+    world: options.world,
     root: options.root,
-    walk: { method: walk.method, truncated: walk.truncated, excluded: [".git", "node_modules", ".cognate"] },
+    walk: { method: `${walk.method} world=${options.world.worldId}`, truncated: walk.truncated, excluded: [".git", "node_modules", ".cognate"] },
     files: walk.files,
     git,
     processes,
@@ -33,7 +38,7 @@ export async function takeWorldSnapshot(options: SnapshotOptions): Promise<World
   };
 }
 
-/** Fold a snapshot + session facts into the world state view (J3). Pure. */
+/** Fold a snapshot + session facts into the world state view (J3, session world). Pure. */
 export function buildWorldState(input: {
   readonly sessionId: string;
   readonly shell: string;
@@ -54,3 +59,4 @@ export function buildWorldState(input: {
     observedAt: input.snapshot.observedAt,
   };
 }
+

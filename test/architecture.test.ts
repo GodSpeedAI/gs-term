@@ -73,4 +73,12 @@ describe("architecture invariants", () => {
       expect(content.includes("appendFile"), `file-writing of stream bytes in ${path} — scrollback is memory-only`).toBe(false);
     }
   });
+
+  test("no provider-specific semantic leakage: the semantic layer never mentions ssh", async () => {
+    // Provider mechanics live in app/worlds.ts + observers (mechanism); semantics stay world-agnostic.
+    const semantic = await contentsOf(join(SRC, "agents"), join(SRC, "projections"), join(SRC, "webmcp"), join(SRC, "semantic"));
+    for (const [path, content] of semantic) {
+      expect(/\bssh/i.test(content), `provider-specific reference in ${path} — worlds are an input property`).toBe(false);
+    }
+  });
 });
