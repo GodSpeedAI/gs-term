@@ -1,0 +1,61 @@
+{
+  "name": "gs-term",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run src/server/index.ts",
+    "test": "bun test test/",
+    "typecheck": "tsc --noEmit",
+    "e2e": "playwright test",
+    "verify": "bun run typecheck && bun run test && bun run e2e"
+  },
+  "dependencies": {
+    "@cognate/cli": "file:./.cognate/vendor/cognate-cli-0.0.0.tgz",
+    "@cognate/domainforge": "file:./.cognate/vendor/cognate-domainforge-0.0.0.tgz",
+    "@cognate/execution": "file:./.cognate/vendor/cognate-execution-0.0.0.tgz",
+    "@cognate/profile-copilot": "file:./.cognate/vendor/cognate-profile-copilot-0.0.0.tgz",
+    "@cognate/provider-local": "file:./.cognate/vendor/cognate-provider-local-0.0.0.tgz",
+    "@mcp-b/webmcp-polyfill": "5.1.0",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "overrides": {
+    "@cognate/cli": "file:./.cognate/vendor/cognate-cli-0.0.0.tgz",
+    "@cognate/execution": "file:./.cognate/vendor/cognate-execution-0.0.0.tgz",
+    "@cognate/profile-copilot": "file:./.cognate/vendor/cognate-profile-copilot-0.0.0.tgz",
+    "@cognate/domainforge": "file:./.cognate/vendor/cognate-domainforge-0.0.0.tgz",
+    "@cognate/provider-local": "file:./.cognate/vendor/cognate-provider-local-0.0.0.tgz",
+    "@cognate/client": "file:./.cognate/vendor/cognate-client-0.0.0.tgz",
+    "@cognate/profile-harness": "file:./.cognate/vendor/cognate-profile-harness-0.0.0.tgz",
+    "@cognate/protocol-connect": "file:./.cognate/vendor/cognate-protocol-connect-0.0.0.tgz",
+    "@cognate/protocol-connect-bun": "file:./.cognate/vendor/cognate-protocol-connect-bun-0.0.0.tgz",
+    "@cognate/react": "file:./.cognate/vendor/cognate-react-0.0.0.tgz",
+    "@cognate/runtime-api": "file:./.cognate/vendor/cognate-runtime-api-0.0.0.tgz",
+    "@cognate/ui-astryx": "file:./.cognate/vendor/cognate-ui-astryx-0.0.0.tgz",
+    "@cognate/ag-ui": "file:./.cognate/vendor/cognate-ag-ui-0.0.0.tgz",
+    "@cognate/capabilities": "file:./.cognate/vendor/cognate-capabilities-0.0.0.tgz",
+    "@cognate/events": "file:./.cognate/vendor/cognate-events-0.0.0.tgz",
+    "@cognate/kernel-api": "file:./.cognate/vendor/cognate-kernel-api-0.0.0.tgz",
+    "@cognate/profile": "file:./.cognate/vendor/cognate-profile-0.0.0.tgz",
+    "@cognate/provider-openai-compatible": "file:./.cognate/vendor/cognate-provider-openai-compatible-0.0.0.tgz",
+    "@cognate/runtime-bun": "file:./.cognate/vendor/cognate-runtime-bun-0.0.0.tgz",
+    "@cognate/proto": "file:./.cognate/vendor/cognate-proto-0.0.0.tgz",
+    "@cognate/projections": "file:./.cognate/vendor/cognate-projections-0.0.0.tgz",
+    "@cognate/artifacts": "file:./.cognate/vendor/cognate-artifacts-0.0.0.tgz",
+    "@cognate/cognitive-api": "file:./.cognate/vendor/cognate-cognitive-api-0.0.0.tgz",
+    "@cognate/continuations": "file:./.cognate/vendor/cognate-continuations-0.0.0.tgz",
+    "@cognate/kernel-cordis": "file:./.cognate/vendor/cognate-kernel-cordis-0.0.0.tgz",
+    "@cognate/store-memory": "file:./.cognate/vendor/cognate-store-memory-0.0.0.tgz",
+    "@cognate/store-sqlite": "file:./.cognate/vendor/cognate-store-sqlite-0.0.0.tgz"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/bun": "^1.4.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.2.2",
+    "typescript": "5"
+  }
+}

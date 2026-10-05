@@ -1,0 +1,26 @@
+# gs-term runtime configuration (non-Markdown, per AGENTS.md).
+# Environment overrides: GSTERM_ROOT, GSTERM_HOSTNAME, GSTERM_PORT, GSTERM_STORE.
+
+[server]
+hostname = "127.0.0.1"
+port = 7317
+
+[world]
+# Execution world id (Cognate ExecutionWorldProvider registry key).
+id = "local"
+# Workspace root: the containment boundary for structured execution and the
+# observation scope of the filesystem observer. Empty = process cwd.
+root = ""
+
+[session]
+id = "main"
+shell = "bash"
+cols = 120
+rows = 32
+# Bounded in-memory scrollback ring for reconnect replay (bytes). PTY bytes are
+# never written to durable storage.
+scrollback_bytes = 262144
+
+[execution]
+# Default structured-execution timeout (ms).
+timeout_ms = 30000

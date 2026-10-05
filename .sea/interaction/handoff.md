@@ -1,0 +1,87 @@
+# Handoff — interaction model → Cognate implementation
+
+For the downstream builder (read with `idm-to-cognate.md` + `cognate-api.md`). Keep this file and
+the traceability map current when names change.
+
+## Semantic source
+
+- Canonical model: `.sea/interaction/interaction-model.sea` (validated; see `validation/`).
+- Re-export: `domain/interaction-model.sea` is a **symlink** to the canonical file (single source;
+  `cognate dev`-compatible). Decision recorded per `idm-to-cognate.md` gap note.
+- Projection load: `loadSemanticProjection(source, { uri })` → `SemanticProjection`; ids verified:
+  entities/resources → `controlplane::<name>`; flows → `gsterm::flow(...)`; policies → `gsterm::*`.
+- Source digest at handoff: `sha256:d64a885e1b117bb664cae7b2745d5ba764bbbe66eac9d830f9a17cc2b45e0768`.
+
+## Explicit capability bindings (`bindCapabilities` — nothing implicit)
+
+| semanticId | capability id | version | provided by | journey |
+|---|---|---|---|---|
+| `controlplane::Execution` | `process.exec` | `1.0.0` | Cognate `executionWorldsComponent` | J2 |
+| `controlplane::Evidence` | `world.snapshot` | `1.0.0` | app `observersComponent` | J1/J2/J3 |
+
+`filesystem.*` (Cognate execution family) is available to agents as supporting capability for
+containment/inspection; it is not bound to a resource because the model has no filesystem
+resource — it is mechanism, not meaning.
+
+## Agents (canonical journeys → runs)
+
+| agent id | journey | input | emits | output |
+|---|---|---|---|---|
+| `agent.execute` | J2 (+J2-W) | `{argv, cwd, worldId, source, requestedBy, correlationId?}` | `execution.started`, `effect.observed`, `execution.completed` | structured execution summary |
+| `agent.observe` | J1 | `{observationId, command, cwd, exitCode, startedAt, endedAt, preSnapshot, sessionId, source:"pty"}` | same three event types | structured execution summary |
+
+Both agents are deterministic given recorded steps (`ctx.step`, `ctx.invoke`); ids minted inside
+steps; no bare clock/randomness.
+
+## Event vocabulary (typed semantic events; PTY bytes never appear here)
+
+- `execution.started` — `{executionId, source, surface, worldId, command, argv?, cwd, startedAt, actor}`
+- `effect.observed` — `{executionId, observedAt, effects: Effect[]}` where
+  `Effect = {kind: "file.created"|"file.modified"|"file.deleted"|"git.dirty"|"git.clean"|"process.started"|"process.stopped"|"port.opened"|"port.closed"|"none", target, before?, after?, evidence: Evidence[]}`
+  and `Evidence = {what, how, confidence: "observed"|"derived"|"unknown", refs: string[]}`
+- `execution.completed` — `{executionId, exitCode|exitCode:null, timedOut?, endedAt, durationMs, output: {stdout?, stderr?}| "unknown", effectsCount, settled: "observed"|"derived"}`
+- `execution.failed` — `{executionId, failedAt, reason}` — explicit non-settlement when a run
+  cannot reach `execution.completed` (e.g. policy denial); rethrown so run status stays `failed`.
+- Runtime-native (`run.*`) lifecycle events are the run-level record; cancellation is only
+  visible there (agents cannot emit after abort — by design).
+- Shared-state `state.changed` on thread `session:<sessionId>` (Cognate-native) carries J3's world
+  view: `{sessionId, shell, cwd, terminal, repository, processes, ports, lastExecution, observedAt}`.
+
+## Projections
+
+| name | public | folds | keys (tenant-partitioned `<tenant>/…`) |
+|---|---|---|---|
+| `executions` | yes | `execution.*`, `run.failed`, `run.cancelled` | `<executionId>` entries + `run:<runId>` identity markers (filter markers out with `isMarkerKey`) |
+
+World state intentionally uses shared thread state (not a projection) so writers get
+idempotency + `expectedVersion`.
+
+## Callers / authority
+
+- Tenant `local`; actors: `human` (kind `user`, cockpit + bridge), `webmcp` (kind `agent`,
+  browser WebMCP tools), `system` (kind `system`, observers/attach).
+- Kernel policy: default-deny; allow `process.exec`, `filesystem.*`, `world.snapshot` to these
+  actors. ActionPolicy: allow `run.start`, `thread.state.read/update`,
+  `remote.offer.publish/list/revoke`, `continuation.resume/cancel` for these callers.
+- Correlation: `sessionId` threads a session's runs; `runId` is the execution identity; the
+  bridge passes `correlationId: session:<sessionId>` so one terminal session is one causal chain.
+
+## Surfaces → same path
+
+| surface | entry | lands on |
+|---|---|---|
+| cockpit run button | `client.startRun("agent.execute", …)` | J2 |
+| WebMCP tool `execute` | same client call, `source:"webmcp"` | J2-W |
+| human typing | shell markers → bridge → `startRun("agent.observe", …)` | J1 |
+| cockpit reads | `readSharedState` / `readProjection` / `events({follow})` | J3/J5 |
+
+## Test traceability
+
+Journey tests: `test/journeys/journey-j<N>-<slug>.test.ts` per catalog id; conformance tests for
+the PTY substrate; architecture tests for: no duplicated Cognate abstractions, bindings explicit,
+WebMCP adapter is the only projection path, mechanism layer imports no `@cognate/*`.
+
+## Validation record
+
+See `validation/` for exact DomainForge commands and outputs; re-run after any `.sea` edit and
+update the digest above.

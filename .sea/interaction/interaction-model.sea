@@ -1,0 +1,85 @@
+@namespace "gsterm"
+@version "0.1.0"
+@owner "gs-term"
+
+// gs-term interaction domain model — canonical semantic source for the browser-native
+// semantic terminal/control plane. Derived from .agents/prompts/start.md + AGENTS.md.
+// Actor entities are the initiators; their journey roles (Operator/Automation/Observer)
+// are catalogued in canonical-journey-catalog.md. Flows carry @journey ids back to it.
+
+// ── Entities ──────────────────────────────────────────────────────────────────
+Entity "Operator" in controlplane
+Entity "Automation" in controlplane
+Entity "Observer" in controlplane
+Entity "Terminal Session" in controlplane
+Entity "Execution World" in controlplane
+Entity "Cockpit" in controlplane
+
+// ── Resources ─────────────────────────────────────────────────────────────────
+Resource "Execution" units in controlplane
+Resource "Effect" units in controlplane
+Resource "Evidence" units in controlplane
+Resource "World State" units in controlplane
+
+// ── Canonical journey flows ───────────────────────────────────────────────────
+// J1: human command observed through the PTY surface settles as an execution
+//     in the same world machine executions enter.
+Flow "Execution"
+    @journey "J1"
+    from "Terminal Session" to "Execution World"
+    quantity 1
+
+// J2: structured execution invoked by automation (UI action or WebMCP tool).
+Flow "Execution"
+    @journey "J2"
+    from "Automation" to "Execution World"
+    quantity 1
+
+// J3: observers derive effects and evidence from the world and reconcile
+//     world state toward the cockpit's view.
+Flow "Effect"
+    @journey "J3"
+    from "Observer" to "Execution World"
+    quantity 1
+
+Flow "Evidence"
+    @journey "J3"
+    from "Execution World" to "Cockpit"
+    quantity 1
+
+Flow "World State"
+    @journey "J3"
+    from "Execution World" to "Cockpit"
+    quantity 1
+
+// J4: operator attaches/reconnects to the live session (bounded replay,
+//     world continuity, resize).
+Flow "World State"
+    @journey "J4"
+    from "Terminal Session" to "Operator"
+    quantity 1
+
+// J5: cockpit inspection reads durable world state, executions, and timeline.
+Flow "Execution"
+    @journey "J5"
+    from "Cockpit" to "Operator"
+    quantity 1
+
+Flow "Evidence"
+    @journey "J5"
+    from "Cockpit" to "Operator"
+    quantity 1
+
+// ── Policies (referenced constraints; runtime checks carry these names) ───────
+Policy every_journey_flow_carries_unit as:
+    forall f in flows: (f.quantity > 0)
+
+// Referenced invariant: derived effects must record provenance-bearing evidence.
+// Cognate does not evaluate this policy; the runtime check named after it does.
+Policy evidence_accompanies_effects as:
+    true
+
+// Referenced invariant: machine (capability) authority is granted explicitly and
+// is not implied by the human PTY's unrestricted shell access.
+Policy machine_authority_is_explicit as:
+    true

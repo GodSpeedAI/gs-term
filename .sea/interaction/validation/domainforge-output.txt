@@ -1,0 +1,22 @@
+$ domainforge --version
+domainforge 0.19.0
+
+$ domainforge validate --format human .sea/interaction/interaction-model.sea
+Validation succeeded: 0 violations total
+
+$ domainforge parse --format human .sea/interaction/interaction-model.sea
+Graph parsed successfully: .sea/interaction/interaction-model.sea
+Entities: 6
+Resources: 4
+Flows: 8
+Roles: 0
+Relations: 0
+Resource instances: 0
+Entity instances: 0
+Policies: 3
+Patterns: 0
+
+$ domainforge fmt --check .sea/interaction/interaction-model.sea
+Would reformat .sea/interaction/interaction-model.sea (85 -> 68 lines)
+Error: File would be reformatted: .sea/interaction/interaction-model.sea
+(expected non-clean: known formatter defect for forall policies + comments)

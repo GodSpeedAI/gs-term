@@ -1,1 +1,6 @@
 .tmp/
+node_modules/
+.cognate/app.sqlite*
+.cognate/dist
+playwright-report/
+test-results/
