@@ -22,11 +22,28 @@ Owners: `gs-term` · `Cognate` · `DomainForge` · `Bun` · `unresolved`.
 - **Consequence/risk:** event semantics conflate acting with noticing; consumers must know which
   runs are pseudo-runs; pressure grows per observed fact.
 - **Workaround:** `agent.observe`/`agent.execute` runs with `source` metadata; catalog J1/J2
-  document the mapping.
+  document the mapping. No fake local observation bus was invented.
 - **Evidence:** `.sea/interaction/assumptions-and-unknowns.md` A1; `runtime-api` service surface
-  (no append/ingest method). Phase 2 adds a second physical reality source (SSH): remote file
-  appeared / connection dropped have the same awkward entry.
-- **Reconsider:** at the Phase-2 final debt review (observation-ingest pressure test).
+  (no append/ingest method). **Phase-2 pressure test (SSH, second physical reality source)
+  STRENGTHENED the case:**
+  1. remote facts *during* an execution (remote file appeared) settle through the same pseudo-run
+     door as local facts — the door did not generalize, it just got more traffic;
+  2. facts *outside* any execution remain unrepresentable at all: the SSH connection dropping, a
+     foreign remote change, fixture shutdown — recording them would require inventing an action;
+  3. world-state reconciliation records observations as `state.changed` with
+     `metadata.source: "caller"` — an observation disguised as a caller edit;
+  4. `world.snapshot` computes rich facts that are silently discarded unless a run or a
+     shared-state write consumes them.
+- **Phase-2 verdict (mandated three-way call): (3) repeated evidence now suggests a general
+  observation-ingest primitive is warranted** — two independent reality sources (PTY/local fs
+  and SSH remote) were forced through the same action-shaped door, and out-of-execution facts
+  still cannot enter the log honestly. **Proposal sketch (NOT implemented; upstream work must
+  follow the `building-with-cognate` gap method in the Cognate repo):** a caller-authorized
+  `RuntimeService.observe(caller, { kind, subject: SemanticRef-ish, facts: Json, observedAt,
+  provenance, correlationId? })` appending a typed `observation.recorded` event distinct from
+  runs/invocations, projectable alongside them, with authority checked like every service call.
+- **Reconsider:** when the upstream proposal is reviewed; or when a third reality source or
+  continuous observation arrives.
 - **Owner:** Cognate (general concern) · **Status:** `upstream-candidate`
 
 ### D-002 Kernel `Policy` cannot distinguish execution worlds
@@ -41,6 +58,8 @@ Owners: `gs-term` · `Cognate` · `DomainForge` · `Bun` · `unresolved`.
   registry invented.
 - **Evidence:** `packages/kernel-api/src/types.ts` (`AuthorizationRequest`); `packages/execution/src/capabilities.ts`
   routes by input `worldId` after authorization.
+- **Phase-2 evidence:** the registration-boundary workaround is implemented and tested
+  (unregistered world ids fail closed — `journey-j2-worlds.test.ts` authority test).
 - **Reconsider:** when per-world actor authority is actually needed; upstream proposal only via
   the `building-with-cognate` gap method.
 - **Owner:** Cognate · **Status:** `upstream-candidate`
@@ -53,7 +72,8 @@ Owners: `gs-term` · `Cognate` · `DomainForge` · `Bun` · `unresolved`.
 - **Consequence/risk:** a symlinked cwd could escape the workspace root before exec.
 - **Workaround:** string checks with per-world roots; file ops still go through `resolve`-guarded
   ports.
-- **Evidence:** `packages/execution/src/types.ts` (`ExecSpec.cwd` semantics); `src/agents/execute.ts`.
+- **Evidence:** `packages/execution/src/types.ts` (`ExecSpec.cwd` semantics); `src/agents/execute.ts`
+  (Phase 2: string containment now applies per-world roots, including remote POSIX roots).
 - **Reconsider:** if untrusted callers can name arbitrary cwd values.
 - **Owner:** unresolved (contract design) · **Status:** `watch`
 
@@ -76,7 +96,9 @@ Owners: `gs-term` · `Cognate` · `DomainForge` · `Bun` · `unresolved`.
 - **Consequence/risk:** consumers could compare `target` alone and collide worlds.
 - **Workaround:** `Effect.worldId` + `ExecutionEntry.worldId` + snapshot `world` provenance;
   the Phase-2 collision test asserts distinctness.
-- **Evidence:** Phase-2 mandate ("world/resource identity"); `contracts.ts` docs.
+- **Evidence:** Phase-2 mandate ("world/resource identity"); `contracts.ts`; implemented via
+  `Effect.worldId` + snapshot `world` provenance; collision-tested (`journey-j2-worlds.test.ts`:
+  identical paths stay distinct).
 - **Reconsider:** if a third identity dimension appears (containers, branches).
 - **Owner:** unresolved → possibly Cognate · **Status:** `watch`
 
@@ -120,6 +142,21 @@ Owners: `gs-term` · `Cognate` · `DomainForge` · `Bun` · `unresolved`.
 - **Current behavior:** Cognate ships `@cognate/execution-wsl`; gs-term registers local + SSH
   only (Phase-2 scope).
 - **Owner:** gs-term · **Status:** `accepted` (deferred seam; trivial later registration)
+
+### D-031 Local `exec` kill semantics diverge from the SSH supervisor
+- **Current behavior:** on timeout/abort the local provider kills the spawned process but not its
+  process group; grandchildren holding the stdio pipes keep `exec` pending until they exit. The
+  SSH provider's supervisor ends the command's process group.
+- **Why debt:** same capability, different cancellation/timeout closure semantics per provider —
+  surfaced by Cognate's own conformance suite with a `sh -c "sleep 30"` slow command.
+- **Consequence/risk:** wrapper commands that spawn background children can delay or mask timeout
+  settlement on the local world.
+- **Workaround:** express long-running commands as direct argv (`["sleep","30"]`) in tests; app
+  timeouts still bound typical commands.
+- **Evidence:** `test/conformance/worlds.test.ts` run before/after harness fix (2 failures);
+  `packages/execution/src/local.ts` vs `execution-ssh` `supervisedExecScript` kill paths.
+- **Reconsider:** when provider parity on group-kill matters (remote PTY, daemons).
+- **Owner:** Cognate (provider contract parity) · **Status:** `upstream-candidate`
 
 ## Terminal / shell debt
 
@@ -168,8 +205,8 @@ Owners: `gs-term` · `Cognate` · `DomainForge` · `Bun` · `unresolved`.
 - **Current behavior:** remote facts observed during execution settle via the execution run;
   facts outside an execution (connection dropped, foreign remote change) cannot enter the log
   without a pseudo-run.
-- **Evidence:** Phase-2 SSH pressure test — strengthens D-001. · **Owner:** Cognate ·
-  **Status:** `upstream-candidate` (folded into D-001 review)
+- **Evidence:** Phase-2 SSH pressure test — folded into D-001's verdict (3: primitive warranted).
+  · **Owner:** Cognate · **Status:** `upstream-candidate`
 
 ## WebMCP debt
 
@@ -213,19 +250,32 @@ Owners: `gs-term` · `Cognate` · `DomainForge` · `Bun` · `unresolved`.
 ### D-028 SSH credentials are provider-only — enforced, watched
 - **Current behavior:** key material/passwords live in provider config (env refs or key paths);
   world `metadata` exposes only `auth` *kind* + host-key fingerprint; events/logs/UI/WebMCP never
-  receive credentials. · **Owner:** gs-term · **Status:** `watch` (audit each release)
+  receive credentials. Enforced by `test/conformance/worlds.test.ts` (metadata leak assertions)
+  and the ephemeral-keypair E2E world (no credentials in the repo). · **Owner:** gs-term ·
+  **Status:** `watch` (audit each release)
 
 ## Testing / validation debt
 
 ### D-029 SSH tests run against an in-process fixture server
 - **Current behavior:** `@cognate/execution-ssh/fixture` runs a real `ssh2` server whose remote
-  end is a test double over the real filesystem; the provider under test is genuine. No external
-  SSH host in CI. · **Workaround:** manual proof path documented in README against a real host.
+  end is a test double over the real filesystem; the provider under test is genuine. Phase 2 runs
+  the world proof + provider conformance against it (19 conformance cases). No external SSH host
+  in CI. · **Workaround:** manual proof path documented in README against a real host.
 - **Owner:** gs-term · **Status:** `accepted`
 
 ### D-030 No dedicated linter
 - **Current behavior:** gate = `typecheck` + `test` + `e2e` (no lint tool configured).
 - **Owner:** gs-term · **Status:** `watch`
+
+### D-032 Vendored SSH fixture is loaded untyped
+- **Current behavior:** the `@cognate/execution-ssh/fixture` .ts source carries a DOM/Node stream
+  typing clash under gs-term's browser-lib tsconfig; tests load it through a non-literal dynamic
+  import (`test/support/ssh-fixture.ts`) so TS skips it while Bun runs the real module.
+- **Why debt:** fixture types are hand-declared locally and can drift from upstream.
+- **Workaround:** hand-written fixture interface; runtime remains the genuine module.
+- **Evidence:** `tsc` failure inside the vendored `fixture.ts` before the loader existed.
+- **Reconsider:** when the upstream fixture compiles under DOM-lib tsconfigs.
+- **Owner:** Cognate (fixture typing) · **Status:** `watch`
 
 ## Deferred architectural seams (not debt — intentionally un-built)
 
