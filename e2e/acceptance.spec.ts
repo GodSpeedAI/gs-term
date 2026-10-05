@@ -172,3 +172,37 @@ test("Phase 2 F: WebMCP runs the SAME tool against an authorized world (no ssh t
   expect(result.executed).toContain(REMOTE_WORKSPACE);
 });
 
+
+test("Phase 3: `/` opens the contextual palette immediately and Syntelligent Search returns bounded results", async ({ page }) => {
+  await page.goto("/");
+  await waitForTerminalLive(page);
+
+  // Seed findable content through the human door (the search matches file content).
+  await typeCommand(page, "printf 'export function reconnectSession() { return 1; }\\n' > findable.txt");
+  const row = page.locator(".exec-command", { hasText: "findable.txt" });
+  await expect(row.first()).toBeVisible({ timeout: 25_000 });
+
+  // `/` opens the overlay from the cockpit when not typing in the terminal (terminal keys are not stolen).
+  await page.locator(".brand").click();
+  await page.keyboard.press("/");
+  await expect(page.locator(".palette")).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator(".palette-context")).toBeVisible();
+  await expect(page.locator(".palette-label", { hasText: "Context" })).toBeVisible();
+  await expect(page.locator(".palette-suggested")).toBeVisible();
+
+  // Type a query and search — results arrive through the shared focus.search capability.
+  await page.locator(".palette-input").fill("reconnectSession");
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".palette-result").first()).toBeVisible({ timeout: 15_000 });
+  // Bounded + inspectable: the reduction funnel is surfaced.
+  await expect(page.locator(".palette-why")).toContainText("Why these?", { timeout: 10_000 });
+  const resultCount = await page.locator(".palette-result").count();
+  expect(resultCount).toBeLessThanOrEqual(5);
+});
+
+test("Phase 3: the Focus panel renders the collaborative context", async ({ page }) => {
+  await page.goto("/");
+  await waitForTerminalLive(page);
+  await expect(page.getByTestId("focus-panel")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("focus-goal")).toContainText("Goal:");
+});

@@ -139,7 +139,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<GsT
     async stop() {
       await bridge.close();
       await session.close();
-      server.stop(true);
+      void server.stop(true);
       await internal.stop();
       await app.close();
     },

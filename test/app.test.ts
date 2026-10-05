@@ -3,7 +3,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { loadGsTermModel, SEMANTIC_ID_EVIDENCE, SEMANTIC_ID_EXECUTION } from "../src/app/bindings.ts";
+import { loadGsTermModel, SEMANTIC_ID_EVIDENCE, SEMANTIC_ID_EXECUTION, SEMANTIC_ID_FOCUS } from "../src/app/bindings.ts";
 import { loadConfig, workspaceRoot } from "../src/config.ts";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
@@ -22,9 +22,10 @@ describe("interaction domain model", () => {
   test("capability bindings are explicit and carry semantic refs (no implicit capabilities)", () => {
     const source = readFileSync(resolve(REPO_ROOT, "domain/interaction-model.sea"), "utf8");
     const model = loadGsTermModel(source, "domain/interaction-model.sea");
-    expect(model.bindings.map((contract) => contract.id).sort()).toEqual(["process.exec", "world.snapshot"]);
+    expect(model.bindings.map((contract) => contract.id).sort()).toEqual(["focus.search", "process.exec", "world.snapshot"]);
     expect(model.executionSemanticRef?.id).toBe(SEMANTIC_ID_EXECUTION);
     expect(model.evidenceSemanticRef?.id).toBe(SEMANTIC_ID_EVIDENCE);
+    expect(model.focusSemanticRef?.id).toBe(SEMANTIC_ID_FOCUS);
   });
 });
 

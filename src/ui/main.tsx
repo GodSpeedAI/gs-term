@@ -13,6 +13,7 @@ import { ExecutionsPanel, type ExecutionEntryView } from "./executions.tsx";
 import { Inspector, type RunEventView } from "./inspector.tsx";
 import { TimelinePanel, type TimelineEvent } from "./timeline.tsx";
 import { createUiInvoker, type CognateClientLike } from "./invoker.ts";
+import { CommandPalette, FocusPanel, type CandidateView, type FocusView } from "./focus.tsx";
 import { pageModelContext, projectCapabilitiesToWebMCP } from "../webmcp/project.ts";
 import { isMarkerKey } from "../projections/executions.ts";
 import type { WorldStateView } from "../semantic/contracts.ts";
@@ -142,6 +143,49 @@ function App({ meta, client }: { readonly meta: Meta; readonly client: ReturnTyp
     [client, meta],
   );
 
+  // Focus state (SharedFocus + the pending agent candidate), refreshed from the semantic world.
+  const [focus, setFocus] = useState<FocusView>({ pinned: [], workingSet: [], unresolved: [], version: 0, affordances: [] });
+  const [candidate, setCandidate] = useState<CandidateView | undefined>(undefined);
+  const refreshFocus = useCallback(async () => {
+    try {
+      const view = (await invoker.focusInspect("ui")) as unknown as FocusView;
+      setFocus({
+        goal: view.goal,
+        primary: view.primary,
+        version: view.version ?? 0,
+        pinned: view.pinned ?? [],
+        workingSet: view.workingSet ?? [],
+        unresolved: view.unresolved ?? [],
+        affordances: view.affordances ?? [],
+      });
+    } catch {
+      /* focus not yet initialized */
+    }
+  }, [invoker]);
+  useEffect(() => {
+    void refreshFocus();
+  }, [refreshFocus]);
+
+  // Human Accept / Pin / Reject — the ONLY path that changes SharedFocus (human authority).
+  const resolve = useCallback(
+    async (intent: "accept" | "pin" | "reject", payload: Record<string, unknown>) => {
+      try {
+        const clientLike = client as unknown as CognateClientLike;
+        const run = await clientLike.startRun("agent.focus", { intent, sessionId: meta.sessionId, ...payload } as never, { idempotencyKey: crypto.randomUUID(), correlationId: `focus:${meta.sessionId}` });
+        for (let i = 0; i < 100; i++) {
+          const state = clientLike.run(run.runId).get();
+          if (state.status === "completed" || state.status === "failed") break;
+          await new Promise((r) => setTimeout(r, 60));
+        }
+        setCandidate(undefined);
+        await refreshFocus();
+      } catch (error) {
+        console.error("focus resolve failed:", error);
+      }
+    },
+    [client, meta.sessionId, refreshFocus],
+  );
+
   const onRun = useCallback(
     (command: string, targetWorld: string) => {
       setRunning(true);
@@ -174,6 +218,7 @@ function App({ meta, client }: { readonly meta: Meta; readonly client: ReturnTyp
           webmcp <strong>{meta.tools.length} tools</strong>
         </span>
         <span className="spacer" />
+        <CommandPalette invoker={invoker} resolve={resolve} focus={focus} candidate={candidate} worldId={worldId} />
         <span className="chip" title="every surface operates the same semantic world">
           state → affordances → action → effects → evidence
         </span>
@@ -182,6 +227,7 @@ function App({ meta, client }: { readonly meta: Meta; readonly client: ReturnTyp
       <div className="main">
         <TerminalPanel sessionId={meta.sessionId} onStatus={setTermStatus} />
         <aside className="sidebar">
+          <FocusPanel resolve={resolve} focus={focus} candidate={candidate} worldId={worldId} />
           {selected ? (
             <Inspector entry={selected} events={selectedEvents} output={selectedOutput} worlds={meta.worlds} onBack={() => setSelectedId(undefined)} />
           ) : (

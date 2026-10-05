@@ -13,6 +13,7 @@ const GRANTED_ACTORS = new Set([ACTOR_HUMAN, ACTOR_WEBMCP, ACTOR_SYSTEM]);
 const GRANTED_CAPABILITIES = new Set([
   "process.exec", // J2 structured execution (Cognate @cognate/execution)
   "world.snapshot", // J1/J2/J3 evidence gathering
+  "focus.search", // J7–J10 Syntelligent Search (deterministic planner)
 ]);
 
 const POLICY_ID = "gsterm-machine-authority-is-explicit";
@@ -33,8 +34,9 @@ export function gstermPolicy(): Policy {
   };
 }
 
-const JOURNEY_AGENTS = new Set(["agent.execute", "agent.observe"]);
+const JOURNEY_AGENTS = new Set(["agent.execute", "agent.observe", "agent.focus"]);
 const WORLD_THREAD_PREFIX = "session:";
+const FOCUS_THREAD_PREFIX = "focus:";
 
 /** Service-level actions: runs, world-state threads, and the D2 remote-offer seam. */
 export function gstermActions(): ActionPolicy {
@@ -49,8 +51,13 @@ export function gstermActions(): ActionPolicy {
         case "run.cancel":
           return allow("caller cancellation (tenant scoping applies)");
         case "thread.state.read":
+          return resource.startsWith(WORLD_THREAD_PREFIX) || resource.startsWith(FOCUS_THREAD_PREFIX) ? allow("session/focus thread") : deny("state is session/focus-scoped");
         case "thread.state.update":
-          return resource.startsWith(WORLD_THREAD_PREFIX) ? allow("session world thread") : deny("world state is session-scoped");
+          if (resource.startsWith(WORLD_THREAD_PREFIX)) return allow("session world thread");
+          // SharedFocus is human-governed (gsterm::human_governs_shared_focus): only human authority
+          // may change it. An agent may read it and propose candidates, never update it.
+          if (resource.startsWith(FOCUS_THREAD_PREFIX)) return caller.actor.id === ACTOR_HUMAN ? allow("human governs SharedFocus") : deny("SharedFocus is human-governed");
+          return deny("state is session/focus-scoped");
         case "observation.record":
           // Reality facts noticed by the mechanism/observer layer — recorded as observations, not actions.
           return allow("observation ingestion (facts, not actions)");

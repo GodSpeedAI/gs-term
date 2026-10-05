@@ -184,3 +184,25 @@ WebMCP tool, future agent); **Observer** = server-side mechanism watchers (fs/gi
 Any implementation of a deferred journey must first be added to this catalog (skill rule).
 
 
+
+## Phase 3 journeys (Focus / attention / Syntelligent Search)
+
+- **J7 `/ what is this?`** — freeze an AttentionSnapshot when `/` opens; resolve the referent
+  against the frozen snapshot (never a later pointer); explain the focused entity.
+  Settlement: a bounded `SearchResult` + a `SearchReceipt` (reduction funnel + provenance).
+- **J8 `/ why did this fail?`** — evidence-first: the focused failed execution's effects/observations
+  are inspected before any broad source search; only then bounded code retrieval.
+- **J9 `/ who calls this?`** — semantic references for the focused symbol (exact rg first; LSP when
+  mounted).
+- **J10 semantic search (unknown concept)** — structural map narrows, then hybrid/exact retrieval;
+  bounded result set; unavailable mechanisms reported truthfully.
+- **J11 agent focus proposal** — agent derives and proposes a `FocusCandidate` (action). SharedFocus
+  is NOT changed. Identical rejected candidates are not reproposed without new evidence.
+- **J12 human Accept / Pin / Reject** — intentional human transitions (action). SharedFocus changes
+  ONLY here, via Cognate `thread.state.update` gated to human (`gsterm::human_governs_shared_focus`).
+- **J13 world switch while search open** — the AttentionSnapshot is frozen; the referent does not
+  silently mutate; search resolves against the captured world unless explicitly refreshed.
+- **J14 unavailable search mechanism (remote world)** — degrade truthfully (report unavailable
+  mechanisms; never silently substitute a local index; provenance carries worldId).
+- **J15 WebMCP agent focus collaboration** — the agent inspects human focus and searches through the
+  SAME Focus Engine (`focus_inspect`/`focus_search`/`focus_propose_candidate`); it cannot self-resolve.

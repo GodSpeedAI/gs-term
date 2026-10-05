@@ -16,6 +16,12 @@ export interface ToolInvoker {
   executeCommand(args: ExecuteCommandArgs, source: "ui" | "webmcp"): Promise<Json>;
   /** Read the durable world state for the session thread. */
   worldState(): Promise<Json>;
+  /** Syntelligent Search via the SAME focus.search capability (bounded results + receipt). */
+  focusSearch(args: { readonly query: string; readonly worldId?: string; readonly referent?: Record<string, unknown> }, source: "ui" | "webmcp"): Promise<Json>;
+  /** Inspect the current SharedFocus + affordances (read-only). */
+  focusInspect(source: "ui" | "webmcp"): Promise<Json>;
+  /** Propose a FocusCandidate (SharedFocus unchanged until a human accepts/pins). */
+  focusProposeCandidate(args: { readonly proposedEntity: Record<string, unknown>; readonly reason: string; readonly evidence?: unknown[]; readonly sourceAgent: string }, source: "ui" | "webmcp"): Promise<Json>;
 }
 
 export interface ToolDescriptor {
@@ -67,5 +73,49 @@ export const CAPABILITY_DESCRIPTORS: readonly ToolDescriptor[] = [
     description: "Read the current semantic world state: cwd, repository (branch/dirty), session processes, listening ports, and the last settled execution.",
     inputSchema: { type: "object", properties: {} },
     invoke: async (invoker) => toContent(await invoker.worldState()),
+  },
+  {
+    name: "focus_search",
+    description:
+      "Syntelligent Search: deterministic narrowing over the current world's available mechanisms (exact rg, structural map, semantic where available). Returns BOUNDED semantic entities + an inspectable reduction receipt. Use FIRST when the location of an answer is uncertain; call a precise capability directly when it is already known.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "What to find, e.g. \"who calls reconnectSession\", \"why did this fail\"" },
+        worldId: { type: "string", description: "Execution world to search (default: the active world). Never silently crosses worlds." },
+        referent: { type: "object", description: "Optional focused EntityRef the query refers to (this/that)" },
+      },
+      required: ["query"],
+    },
+    invoke: async (invoker, args) => {
+      if (typeof args.query !== "string" || !args.query) return toContent({ error: "query must be a non-empty string" });
+      return toContent(await invoker.focusSearch({ query: args.query, ...(typeof args.worldId === "string" ? { worldId: args.worldId } : {}), ...(args.referent ? { referent: args.referent as Record<string, unknown> } : {}) }, "webmcp"));
+    },
+  },
+  {
+    name: "focus_inspect",
+    description: "Inspect the shared collaborative focus: goal, primary focus, pinned entities, working set, unresolved questions, and current affordances. Bounded — no source dump.",
+    inputSchema: { type: "object", properties: {} },
+    invoke: async (invoker) => toContent(await invoker.focusInspect("webmcp")),
+  },
+  {
+    name: "focus_propose_candidate",
+    description:
+      "Propose a FocusCandidate: an evidence-backed suggestion to shift the shared focus. The agent CANNOT accept/pin/reject — SharedFocus changes only with human authority. This makes the proposal visible for a human to resolve.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        proposedEntity: { type: "object", description: "EntityRef {worldId, workspace, kind, id, name?, location?}" },
+        reason: { type: "string", description: "Why this is likely relevant" },
+        evidence: { type: "array", description: "Supporting evidence [{what, how, confidence, refs}]" },
+        sourceAgent: { type: "string", description: "Agent proposing (e.g. agent.focus)" },
+      },
+      required: ["proposedEntity", "reason", "sourceAgent"],
+    },
+    invoke: async (invoker, args) => {
+      const proposedEntity = args.proposedEntity as Record<string, unknown> | undefined;
+      if (!proposedEntity || typeof proposedEntity.id !== "string") return toContent({ error: "proposedEntity must be an EntityRef" });
+      return toContent(await invoker.focusProposeCandidate({ proposedEntity, reason: String(args.reason ?? ""), evidence: (args.evidence as unknown[]) ?? [], sourceAgent: String(args.sourceAgent ?? "agent.focus") }, "webmcp"));
+    },
   },
 ];

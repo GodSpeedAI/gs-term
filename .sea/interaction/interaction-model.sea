@@ -14,12 +14,27 @@ Entity "Observer" in controlplane
 Entity "Terminal Session" in controlplane
 Entity "Execution World" in controlplane
 Entity "Cockpit" in controlplane
+Entity "Human Attention" in controlplane
+Entity "Agent Attention" in controlplane
+Entity "Syntelligent Search" in controlplane
+Entity "Code Symbol" in controlplane
+Entity "Diagnostic" in controlplane
+Entity "Structural Map" in controlplane
 
 // ── Resources ─────────────────────────────────────────────────────────────────
 Resource "Execution" units in controlplane
 Resource "Effect" units in controlplane
 Resource "Evidence" units in controlplane
 Resource "World State" units in controlplane
+Resource "Working Set" units in controlplane
+Resource "Search Receipt" units in controlplane
+Resource "Search Result" units in controlplane
+Resource "Search Session" units in controlplane
+Resource "Focus Candidate" units in controlplane
+Resource "Shared Focus" units in controlplane
+Resource "Attention Snapshot" units in controlplane
+Resource "Search Mechanism" units in controlplane
+Resource "Affordance" units in controlplane
 
 // ── Canonical journey flows ───────────────────────────────────────────────────
 // J1: human command observed through the PTY surface settles as an execution
@@ -70,6 +85,62 @@ Flow "Evidence"
     from "Cockpit" to "Operator"
     quantity 1
 
+// ── Focus / attention / Syntelligent Search journeys (Phase 3) ────────────────
+// J7: `/ what is this?` — resolve a referent against the captured AttentionSnapshot and
+//     explain the focused entity.
+Flow "Search Result"
+    @journey "J7"
+    from "Syntelligent Search" to "Operator"
+    quantity 1
+
+// J8: `/ why did this fail?` — evidence-first retrieval over a focused failed execution.
+Flow "Search Result"
+    @journey "J8"
+    from "Execution World" to "Operator"
+    quantity 1
+
+// J9: `/ who calls this?` — semantic references for the focused symbol.
+Flow "Search Result"
+    @journey "J9"
+    from "Code Symbol" to "Operator"
+    quantity 1
+
+// J10: semantic search for an unknown concept — structural/hybrid retrieval, bounded.
+Flow "Search Session"
+    @journey "J10"
+    from "Syntelligent Search" to "Operator"
+    quantity 1
+
+// J11: agent derives and proposes a FocusCandidate (SharedFocus unchanged until accepted).
+Flow "Focus Candidate"
+    @journey "J11"
+    from "Automation" to "Cockpit"
+    quantity 1
+
+// J12: human resolves a FocusCandidate (Accept / Pin / Reject) — the only way SharedFocus changes.
+Flow "Shared Focus"
+    @journey "J12"
+    from "Operator" to "Cockpit"
+    quantity 1
+
+// J13: the world may change while a contextual search is open; the snapshot must not silently mutate.
+Flow "Attention Snapshot"
+    @journey "J13"
+    from "Cockpit" to "Operator"
+    quantity 1
+
+// J14: a search mechanism unavailable in the current world degrades truthfully (never silent cross-world).
+Flow "Search Mechanism"
+    @journey "J14"
+    from "Syntelligent Search" to "Cockpit"
+    quantity 1
+
+// J15: a WebMCP agent inspects human focus and searches from it (same Focus Engine as the human).
+Flow "Shared Focus"
+    @journey "J15"
+    from "Cockpit" to "Automation"
+    quantity 1
+
 // ── Policies (referenced constraints; runtime checks carry these names) ───────
 Policy every_journey_flow_carries_unit as:
     forall f in flows: (f.quantity > 0)
@@ -82,4 +153,19 @@ Policy evidence_accompanies_effects as:
 // Referenced invariant: machine (capability) authority is granted explicitly and
 // is not implied by the human PTY's unrestricted shell access.
 Policy machine_authority_is_explicit as:
+    true
+
+// Referenced invariant: only human authority may change SharedFocus (accept/pin/reject);
+// an agent may only propose FocusCandidates. The Cognate policy named after this enforces it.
+Policy human_governs_shared_focus as:
+    true
+
+// Referenced invariant: search never silently crosses execution worlds; a resource is
+// (worldId, resource) and unavailable means unavailable (truthful incompleteness).
+Policy search_never_crosses_worlds_silently as:
+    true
+
+// Referenced invariant: attention is captured at a meaningful boundary (AttentionSnapshot on `/`),
+// not as continuous pointer noise; transient pointer telemetry is never durably recorded.
+Policy attention_is_not_pointer_noise as:
     true

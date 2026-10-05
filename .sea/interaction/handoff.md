@@ -113,3 +113,18 @@ The Cognate primitive (`RuntimeService.observe`) is consumed by gs-term's bridge
 discovered facts) and proved by `test/journeys/journey-j6-observations.test.ts` (D/E/F/G). The
 distinction INTENT/action-run vs. REALITY/observation vs. inference/attribution is documented in
 `docs/concepts.md` (Cognate) and the root `README.md` architecture section (gs-term).
+
+## Phase 3 snapshot (Focus Engine / Syntelligent Search)
+
+```
+Phase 3 baseline (rollback boundary):
+  gs-term: a109aa24df8f3a8641a957442112558d4dc5f796
+
+Phase 3 completion:
+  gs-term: the Phase 3 completion commit — feat: add focus engine and syntelligent search
+```
+
+Focus/attention/search semantics are modeled in `interaction-model.sea` (J7–J15), implemented across
+`src/focus/` (attention, focus reducer, search planner, mechanisms) + `src/components/focus.ts`
+(`focus.search`) + `src/agents/focus.ts` (`agent.focus`), and projected to the cockpit (`/` overlay +
+Focus panel) and WebMCP (focus tools; human resolution excluded).

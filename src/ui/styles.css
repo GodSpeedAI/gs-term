@@ -558,3 +558,29 @@ pre.payload {
 .xterm-viewport::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 6px; border: 3px solid var(--bg-1); }
 
 
+
+/* ── Focus surface (Phase 3) ───────────────────────────────────────────────── */
+.focus-open { background: var(--panel, #1a1d24); color: inherit; border: 1px solid #2a2f3a; border-radius: 6px; padding: 4px 10px; cursor: pointer; font: inherit; }
+.focus-open:hover { border-color: #3a82f6; }
+.focus-panel { border: 1px solid #2a2f3a; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; background: rgba(20, 24, 32, 0.6); font-size: 12px; }
+.focus-goal { font-weight: 600; margin-bottom: 8px; }
+.focus-section { margin: 8px 0; }
+.palette-label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; color: #7c8698; margin: 6px 0 3px; }
+.palette-entity { padding: 2px 0; }
+.muted { color: #7c8698; }
+.palette-actions { display: flex; gap: 6px; margin-top: 5px; }
+.palette-actions button, .palette-suggested button { background: #232833; color: inherit; border: 1px solid #2f3646; border-radius: 5px; padding: 3px 9px; cursor: pointer; font: inherit; font-size: 11px; }
+.palette-actions button:hover, .palette-suggested button:hover { border-color: #3a82f6; }
+.palette-scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); display: flex; justify-content: center; align-items: flex-start; z-index: 50; }
+.palette { width: min(620px, 92vw); margin-top: 8vh; background: #14171e; border: 1px solid #2a2f3a; border-radius: 10px; padding: 14px; max-height: 70vh; overflow: auto; }
+.palette-context { margin-bottom: 10px; }
+.palette-candidate { border-left: 2px solid #3a82f6; padding-left: 10px; margin: 8px 0; }
+.palette-suggested { display: flex; gap: 6px; flex-wrap: wrap; }
+.palette-input { width: 100%; box-sizing: border-box; background: #0e1116; color: inherit; border: 1px solid #2f3646; border-radius: 6px; padding: 9px 12px; font: inherit; font-size: 14px; }
+.palette-input:focus { outline: none; border-color: #3a82f6; }
+.palette-status { padding: 8px 2px; font-size: 12px; }
+.palette-results { margin-top: 8px; }
+.palette-result { padding: 6px 4px; border-bottom: 1px solid #22272f; }
+.palette-result-name { font-weight: 600; }
+.palette-result-reason { color: #9aa4b2; font-size: 11px; margin-top: 2px; }
+.palette-why { margin-top: 10px; font-size: 11px; color: #7c8698; }

@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import type { Json } from "@cognate/events";
 import type { Caller } from "@cognate/runtime-api";
 import { createGsTermRuntime, type GsTermRuntime } from "../../src/app/runtime.ts";
 import type { GsTermConfig } from "../../src/config.ts";
@@ -56,6 +57,17 @@ function fakeInvoker(): ToolInvoker & { calls: { argv: readonly string[]; source
     async worldState() {
       return { cwd: "/world" };
     },
+    async focusSearch(args, source) {
+      calls.push({ argv: ["focus.search", args.query], source });
+      return { results: [], receipt: { query: args.query, intent: "semantic" } } as unknown as Json;
+    },
+    async focusInspect() {
+      return { goal: "test", pinned: [] } as unknown as Json;
+    },
+    async focusProposeCandidate(args, source) {
+      calls.push({ argv: ["focus.propose", args.sourceAgent], source });
+      return { candidate: { id: "cand", proposedEntity: args.proposedEntity }, sharedFocusChanged: false } as unknown as Json;
+    },
   };
 }
 
@@ -74,9 +86,9 @@ describe("WebMCP projection (J2-W)", () => {
     const { context, tools } = fakeContext();
     const invoker = fakeInvoker();
     const result = await projectCapabilitiesToWebMCP(context, invoker);
-    expect([...result.registered].sort()).toEqual(["execute_command", "get_world_state"]);
+    expect([...result.registered].sort()).toEqual(["execute_command", "focus_inspect", "focus_propose_candidate", "focus_search", "get_world_state"]);
     expect(result.failed).toEqual([]);
-    expect(tools.length).toBe(2);
+    expect(tools.length).toBe(5);
 
     const executed = JSON.parse((await context.executeTool!(tools[0]!, JSON.stringify({ argv: ["touch", "x.txt"] }))) as string) as { content: { text: string }[] };
     expect(executed.content[0]!.text).toContain("exec_test");
@@ -139,5 +151,33 @@ describe("D2 consumption seam (interface only)", () => {
     await app!.runtime.service.revokeRemoteOffer(webmcpCaller, { offerId: published.id });
     const after = await app!.runtime.service.listRemoteOffers(webmcpCaller, { agent: "agent.execute" });
     expect(after.some((offer) => offer.id === published.id)).toBe(false);
+  });
+});
+
+describe("WebMCP focus projection (agent collaboration)", () => {
+  test("focus tools are projected and the agent can propose, but NO accept/pin/reject tool exists", async () => {
+    const { context, tools } = fakeContext();
+    const invoker = fakeInvoker();
+    await projectCapabilitiesToWebMCP(context, invoker);
+    const names = (tools as { name: string }[]).map((t) => t.name);
+    expect(names).toContain("focus_search");
+    expect(names).toContain("focus_inspect");
+    expect(names).toContain("focus_propose_candidate");
+    // Human resolution is deliberately NOT a WebMCP tool — the agent cannot self-accept/pin/reject.
+    expect(names).not.toContain("focus_accept");
+    expect(names).not.toContain("focus_pin");
+    expect(names).not.toContain("focus_reject");
+  });
+
+  test("focus_propose_candidate routes through the shared invoker and does not change SharedFocus", async () => {
+    const { context, tools } = fakeContext();
+    const invoker = fakeInvoker();
+    await projectCapabilitiesToWebMCP(context, invoker);
+    const proposeTool = (tools as { name: string }[]).find((t) => t.name === "focus_propose_candidate")!;
+    const raw = await context.executeTool!(proposeTool, JSON.stringify({ proposedEntity: { worldId: "local", id: "restoreSession", kind: "CodeSymbol" }, reason: "relevant", sourceAgent: "agent.focus" }));
+    const result = JSON.parse(raw as string) as { content: { text: string }[] };
+    expect(result.content[0]!.text).toContain("sharedFocusChanged");
+    expect(result.content[0]!.text).toContain("false");
+    expect(invoker.calls.some((c) => c.argv[0] === "focus.propose")).toBe(true);
   });
 });

@@ -141,6 +141,37 @@ To run the same-capability proof against a **real** SSH host: configure a world 
 (or the WebMCP `execute_command` tool with `worldId`). The inspector shows which world handled
 each execution; effects carry per-world provenance.
 
+## Focus Engine & Syntelligent Search (Phase 3)
+
+The cockpit deterministically reduces the computational world around the goal and current
+attention — no LLM. The loop:
+
+```
+user goal + human attention + accepted SharedFocus + current world + observed reality
+        → Focus Engine (deterministic) → smallest useful working set + affordances
+        → human/agent action → effects + observations + evidence → recompute
+```
+
+- **Attention is distinct from focus.** `HumanAttention`/`AgentAttention` are transient; an
+  `AttentionSnapshot` is frozen when `/` opens so a referent ("this", "that") never silently mutates
+  (deterministic precedence, semantic entity identity — never DOM paths).
+- **SharedFocus is human-governed.** An agent may only propose `FocusCandidate`s (action); Accept /
+  Pin / Reject are human-only intentional transitions, enforced through Cognate's `ActionPolicy`
+  (`gsterm::human_governs_shared_focus`) — not UI convention.
+- **Syntelligent Search** (`focus.search`) is the deterministic narrowing entry point: exact `rg`,
+  structural map, semantic where available — always world-local, always bounded, with an inspectable
+  reduction receipt (`Why these?`). It never silently crosses worlds; unavailable mechanisms are
+  reported truthfully (D-010 honesty).
+- **Structural map** = the minimal deterministic graph (Graft-donor tier): typed edges from evidence,
+  `contains` for hierarchy, explicit freshness — no LLM summaries.
+- **Mechanisms**: `rg` (exact, real); `structural-map` (derived); `solidlsp` / `zvec-grep` / `zvec`
+  are mounted-mechanism seams reported `unavailable` until their managed processes exist.
+- **WebMCP** projects the same Focus Engine (`focus_search`, `focus_inspect`,
+  `focus_propose_candidate`); human resolution is deliberately NOT a WebMCP tool (the agent cannot
+  self-accept).
+- **Effect→observation fan-out** (bounded/idempotent) lets high-value derived effects become Focus
+  evidence through the Cognate observation door (Phase-2.5 primitive).
+
 ## Decisions worth preserving
 
 1. **`setsid` around the shell.** `Bun.spawn({terminal})` (Bun 1.4.0) does not session-lead the

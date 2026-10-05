@@ -52,5 +52,31 @@ export function createUiInvoker(client: CognateClientLike, options: UiInvokerOpt
     async worldState(): Promise<Json> {
       return client.threadSharedState(options.threadId).get().state;
     },
+    async focusSearch(args, source): Promise<Json> {
+      return runFocus(client, options, "search", { query: args.query, worldId: args.worldId ?? options.worldId, ...(args.referent ? { referent: args.referent } : {}) }, source);
+    },
+    async focusInspect(source): Promise<Json> {
+      return runFocus(client, options, "inspect", {}, source);
+    },
+    async focusProposeCandidate(args, source): Promise<Json> {
+      return runFocus(client, options, "propose", { proposedEntity: args.proposedEntity, reason: args.reason, evidence: args.evidence ?? [], sourceAgent: args.sourceAgent, candidateId: crypto.randomUUID(), evidenceToken: crypto.randomUUID() }, source);
+    },
   };
+}
+
+/** Start and settle an `agent.focus` run (the semantic orchestration for attention/focus/search). */
+async function runFocus(client: CognateClientLike, options: UiInvokerOptions, intent: string, input: Record<string, unknown>, source: "ui" | "webmcp"): Promise<Json> {
+  const run = await client.startRun(
+    "agent.focus",
+    { intent, sessionId: options.sessionId, ...input } as Json,
+    { idempotencyKey: crypto.randomUUID(), correlationId: `focus:${options.sessionId}` },
+  );
+  const deadline = Date.now() + 60_000;
+  for (;;) {
+    const state = client.run(run.runId).get();
+    if (state.status === "completed") return state.output;
+    if (state.status === "failed" || state.status === "cancelled") return { error: state.error ?? state.status, runId: run.runId };
+    if (Date.now() > deadline) return { error: "timed out waiting for focus operation to settle", runId: run.runId };
+    await new Promise((resolve) => setTimeout(resolve, 60));
+  }
 }

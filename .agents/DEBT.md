@@ -285,8 +285,9 @@ Owners: `gs-term` · `Cognate` · `DomainForge` · `Bun` · `unresolved`.
 - **Owner:** gs-term · **Status:** `accepted`
 
 ### D-030 No dedicated linter
-- **Current behavior:** gate = `typecheck` + `test` + `e2e` (no lint tool configured).
-- **Owner:** gs-term · **Status:** `watch`
+- **Current behavior:** resolved in Phase 3 — `bun run lint` runs `oxlint --type-aware` (oxlint 1.87 +
+  oxlint-tsgolint 7.0 type-aware path); `tsc --noEmit` kept as a separate gate. Deterministic, green
+  (0 errors; correctness warnings advisory). · **Owner:** gs-term · **Status:** `resolved`
 
 ### D-032 Vendored SSH fixture is loaded untyped
 - **Current behavior:** the `@cognate/execution-ssh/fixture` .ts source carries a DOM/Node stream
@@ -297,6 +298,52 @@ Owners: `gs-term` · `Cognate` · `DomainForge` · `Bun` · `unresolved`.
 - **Evidence:** `tsc` failure inside the vendored `fixture.ts` before the loader existed.
 - **Reconsider:** when the upstream fixture compiles under DOM-lib tsconfigs.
 - **Owner:** Cognate (fixture typing) · **Status:** `watch`
+
+## Phase 3 (Focus Engine / Syntelligent Search) debt
+
+### D-033 SolidLSP not mounted (language semantics)
+- **Current behavior:** `solidlsp` reported `unavailable` per world; search degrades to rg +
+  structural map. The managed-bridge seam (startup/readiness/workspace-assign/shutdown) is in
+  `resolveAvailability`/`MechanismName`. · **Reconsider:** when the MIT `src/solidlsp` portion is
+  mounted behind the managed bridge (TypeScript first). · **Owner:** gs-term · **Status:** `watch`
+
+### D-034 zvec-grep / zvec not mounted (hybrid semantic retrieval)
+- **Current behavior:** `zvec-grep` (preview) and `zvec` (Node native addon, Bun-compat unproven)
+  reported `unavailable`; the planner uses the local `potion-code-16m-v2` path when mounted. Raw
+  `zvec` is deliberately NOT a second source index (its justified role is Focus/structural concept
+  retrieval, deferred). Availability + freshness are modeled; no duplicate index built. · **Owner:**
+  gs-term · **Status:** `watch` (pin tested versions when mounted)
+
+### D-035 Structural map is a minimal deterministic tier
+- **Current behavior:** `src/focus/mechanisms.ts` builds workspace→module/test + import/test edges
+  from `rg --files` + regex import extraction (Graft-donor deterministic pattern: typed edges,
+  `contains` hierarchy-only, explicit freshness; no LLM summaries). Not every AST node is modeled.
+  · **Owner:** gs-term · **Status:** `accepted`
+
+### D-036 Ambiguous referent limits
+- **Current behavior:** referent resolution is a fixed precedence; when several near-precedence
+  candidates exist it surfaces alternatives ("I think you mean") rather than guessing. Arbitrary
+  numeric confidence is not modeled. · **Owner:** gs-term · **Status:** `accepted`
+
+### D-037 Dynamic WebMCP affordance registration not used
+- **Current behavior:** a stable WebMCP core (execute_command, get_world_state, focus_search,
+  focus_inspect, focus_propose_candidate) is registered; context-relevant dynamic tool churn is
+  deliberately not relied on (Chromium reliability). `focus_inspect` returns current affordances.
+  Human resolution (accept/pin/reject) is intentionally NOT a WebMCP tool (agent cannot self-resolve).
+  · **Owner:** gs-term · **Status:** `accepted`
+
+### D-038 Effect→observation fan-out is bounded and optional
+- **Current behavior:** `src/bridge/observations.ts` `recordEffectObservations` fans out only
+  Focus-relevant effects (file/port/git/process) as idempotent observations correlated to their
+  execution; `none`/noise excluded. Full auto-fan-out in the settlement follower is the remaining
+  increment (available + tested on demand). Updates D-001 'Reconsider'. · **Owner:** gs-term ·
+  **Status:** `watch`
+
+### D-039 Multi-session seam preserved
+- **Current behavior:** SharedFocus/Attention are scoped to `focus:<sessionId>` threads +
+  `(worldId, workspace, id)` entity identity; no global singleton. Session A→local→Focus A /
+  Session B→ssh→Focus B is possible without redesign. Not implemented (Phase 3 scope). · **Owner:**
+  gs-term · **Status:** `accepted`
 
 ## Deferred architectural seams (not debt — intentionally un-built)
 

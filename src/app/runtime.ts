@@ -4,10 +4,13 @@
 import { createRuntime, type Runtime } from "@cognate/runtime-bun";
 import { executionWorldsComponent } from "@cognate/execution";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { executeAgent } from "../agents/execute.ts";
 import { observeAgent } from "../agents/observe.ts";
+import { focusAgent } from "../agents/focus.ts";
 import { observersComponent } from "../components/observers.ts";
+import { focusComponent, type FocusSearchInput } from "../components/focus.ts";
+import { syntelligentSearch } from "../focus/search.ts";
 import { executionsProjection } from "../projections/executions.ts";
 import type { GsTermConfig } from "../config.ts";
 import { workspaceRoot } from "../config.ts";
@@ -54,10 +57,22 @@ export async function createGsTermRuntime(options: GsTermRuntimeOptions): Promis
     agents: [
       executeAgent({ worldRoots: worlds.roots, defaultWorldId: options.config.world.id, defaultTimeoutMs: options.config.execution.timeoutMs }),
       observeAgent({ sessionWorldId: options.config.world.id }),
+      focusAgent({ sessionWorldId: options.config.world.id, workspace: basename(root) }),
     ],
     components: [
       executionWorldsComponent(worlds.registry, model.executionSemanticRef ? { semanticRef: model.executionSemanticRef } : {}),
       observersComponent({ observer: worlds.observer, ...(model.evidenceSemanticRef ? { semanticRef: model.evidenceSemanticRef } : {}) }),
+      focusComponent({
+        async search(input: FocusSearchInput) {
+          const provider = worlds.registry.get(input.worldId);
+          const worldRoot = worlds.roots[input.worldId];
+          if (!worldRoot) throw new Error(`no workspace root for world ${input.worldId}`);
+          return syntelligentSearch(
+            { query: input.query, intent: input.intent, snapshot: input.snapshot, focus: input.focus, referent: input.referent },
+            { process: provider.process, root: worldRoot, worldId: provider.worldId, workspace: basename(worldRoot), mounted: new Set(["structural-map"]), execution: input.execution },
+          );
+        },
+      }),
     ],
     projections: [{ projection: executionsProjection, public: true }],
   });

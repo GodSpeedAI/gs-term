@@ -4,6 +4,7 @@ import { bindCapabilities, loadSemanticProjection, type CapabilityBinding, type 
 import type { CapabilityContract, SemanticRef } from "@cognate/kernel-api";
 import { EXECUTION_CAPABILITY_VERSION, PROCESS_CAPABILITY } from "@cognate/execution";
 import { WORLD_SNAPSHOT_CAPABILITY, WORLD_SNAPSHOT_VERSION } from "../components/observers.ts";
+import { FOCUS_SEARCH_CAPABILITY, FOCUS_SEARCH_VERSION } from "../components/focus.ts";
 
 export interface SemanticModel {
   readonly projection: SemanticProjection;
@@ -11,11 +12,13 @@ export interface SemanticModel {
   readonly bindings: readonly CapabilityContract[];
   readonly executionSemanticRef: SemanticRef | undefined;
   readonly evidenceSemanticRef: SemanticRef | undefined;
+  readonly focusSemanticRef: SemanticRef | undefined;
 }
 
 /** Semantic ids verified against the projection round-trip (see .sea/interaction/handoff.md). */
 export const SEMANTIC_ID_EXECUTION = "controlplane::Execution";
 export const SEMANTIC_ID_EVIDENCE = "controlplane::Evidence";
+export const SEMANTIC_ID_FOCUS = "controlplane::Syntelligent Search";
 
 export function loadGsTermModel(source: string, uri: string): SemanticModel {
   const result = loadSemanticProjection(source, { uri });
@@ -31,6 +34,7 @@ export function loadGsTermModel(source: string, uri: string): SemanticModel {
   const bindings: readonly CapabilityBinding[] = [
     { semanticId: SEMANTIC_ID_EXECUTION, capability: { id: PROCESS_CAPABILITY, version: EXECUTION_CAPABILITY_VERSION } },
     { semanticId: SEMANTIC_ID_EVIDENCE, capability: { id: WORLD_SNAPSHOT_CAPABILITY, version: WORLD_SNAPSHOT_VERSION } },
+    { semanticId: SEMANTIC_ID_FOCUS, capability: { id: FOCUS_SEARCH_CAPABILITY, version: FOCUS_SEARCH_VERSION } },
   ];
   const contracts = bindCapabilities(projection, bindings);
   const byCapability = new Map(contracts.map((contract) => [contract.id, contract]));
@@ -41,5 +45,6 @@ export function loadGsTermModel(source: string, uri: string): SemanticModel {
     bindings: contracts,
     executionSemanticRef: byCapability.get(PROCESS_CAPABILITY)?.semanticRef,
     evidenceSemanticRef: byCapability.get(WORLD_SNAPSHOT_CAPABILITY)?.semanticRef,
+    focusSemanticRef: byCapability.get(FOCUS_SEARCH_CAPABILITY)?.semanticRef,
   };
 }
