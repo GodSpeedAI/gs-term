@@ -1,0 +1,112 @@
+# gs-term clean-machine oracle (Phase 3.6).
+#
+# Proves the portability story from a fresh GitHub-hosted runner:
+#   checkout → Devbox toolchain → bootstrap (pinned bun, rustup 1.98.0 helper,
+#   uv SolidLSP) → release verification — with Node invisible to the product
+#   path and NO semantic skips (GSTERM_REQUIRE_SEMANTIC=1).
+#
+# The invariant is not "the runner image contains zero Node binaries" (GitHub's
+# own machinery needs Node); it is that gs-term's bootstrap/runtime/verification
+# environment does not depend on or resolve Node — enforced inside
+# scripts/verify-all.sh --release via the PATH scrub + `command -v node` check.
+#
+# This same job adjudicates D-040 (devbox/nix toolchain vs WSL-specific breakage).
+
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-oracle:
+    name: clean-machine semantic oracle (linux-x64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Devbox
+        uses: jetify-com/devbox-install-action@v0.11.0
+        with:
+          enable-cache: "true"
+
+      # Caches are acceleration, never correctness: a full cache miss still
+      # bootstraps everything from the network (bun zip, crates, model, wheels).
+      - name: Cache cargo (registry/git)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+          key: cargo-${{ runner.os }}-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Cache bun packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - name: Cache uv (SolidLSP environment)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+            solidlsp/.venv
+          key: uv-${{ runner.os }}-${{ hashFiles('solidlsp/uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-
+
+      # Warm potion model (~34 MB, sha256-pinned revision) — key never changes
+      # until the pinned revision in the helper changes.
+      - name: Cache potion embedding model
+        uses: actions/cache@v4
+        with:
+          path: ~/.zvec-grep/models
+          key: potion-model-e9d2a44ca6a05ac6685f3b23709ea57eb7352d5b
+
+      - name: Record tool versions (debug evidence)
+        run: |
+          set -o pipefail
+          {
+            echo "== host =="; uname -a; ldd --version | head -1
+            echo "== devbox =="; devbox version
+            echo "== devbox tools =="; devbox run -- bash -c 'python3 --version; uv --version; rg --version | head -1; git --version; ssh -V 2>&1; cc --version | head -1; cmake --version | head -1'
+            echo "== node on host PATH (informational; scrubbed for product) =="; command -v node || echo "node: not on PATH"
+          } | tee /tmp/gsterm-versions.log
+
+      - name: Bootstrap (bun + rustup 1.98.0 + helper build + solidlsp sync)
+        run: devbox run bootstrap 2>&1 | tee /tmp/gsterm-bootstrap.log
+
+      - name: Provision Playwright chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Release verification (node-free, no semantic skips)
+        run: devbox run verify-release 2>&1 | tee /tmp/gsterm-verify.log
+
+      - name: Doctor summary (require-semantic profile)
+        if: always()
+        run: |
+          devbox run doctor --probe 2>&1 | tee /tmp/gsterm-doctor.log || true
+          echo "strict re-check (informational in summary step):"
+          devbox run doctor --require-semantic 2>&1 | tail -3 || true
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gsterm-failure-logs
+          path: |
+            /tmp/gsterm-versions.log
+            /tmp/gsterm-bootstrap.log
+            /tmp/gsterm-verify.log
+            /tmp/gsterm-doctor.log
+          if-no-files-found: ignore
+          retention-days: 14

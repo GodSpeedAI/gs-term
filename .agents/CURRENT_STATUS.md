@@ -1,6 +1,23 @@
 # Current status
 
-**Phase 3.5 complete (2026-10-05)** — native semantic reduction substrate mounted and proven.
+**Phase 3.6 complete (2026-10-05)** — semantic-coordinate hardening + clean-machine oracle.
+
+- Coordinate-first routing (durable rule: coordinate > symbol lookup > textual declaration
+  recovery): exact `CodeSymbol` coordinates go straight to SolidLSP (`attention-coordinate`
+  stage; zero discovery calls — J9-A proves workspaceSymbols/rg were never invoked). Partial
+  coordinates refine file-locally (one-line read, then document symbols). Name-only keeps the
+  recovery chain (workspaceSymbols → hardened rg declaration finder → warm-up → references).
+- Strict release verification: `scripts/verify-all.sh --release` (devbox: `devbox run
+  verify-release`) = node-free + `GSTERM_REQUIRE_SEMANTIC=1` (semantic skips become failures
+  via `test/support/semantic-gate.ts`) + `bun run doctor --require-semantic` + DomainForge
+  projection round-trip + everything unskippable.
+- Clean-machine CI oracle: `.github/workflows/verify.yml` — fresh ubuntu-latest runner,
+  Devbox toolchain, `devbox run bootstrap` (self-contained: pinned bun, rustup 1.98.0, uv;
+  cc smoke-test adjudicates the nix-toolchain PATH, D-040), `devbox run verify-release`.
+  Caches (cargo/bun/uv/potion model) are acceleration only; failure artifacts upload
+  bootstrap/verify/doctor logs.
+
+**Phase 3.5 (2026-10-05)** — native semantic reduction substrate mounted and proven.
 
 ## What exists now
 

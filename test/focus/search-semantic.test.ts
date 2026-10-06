@@ -2,7 +2,7 @@
 // FAKE substrate — no native processes here (integration lives in
 // test/mechanisms/). Asserts the reduction contract: which stages ran, in what
 // order, and which did NOT run (never claiming an unrun stage).
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -43,7 +43,7 @@ function fakeHelper(calls: FakeCalls, options: { startFails?: boolean; concepts?
   } as unknown as SemanticHelper;
 }
 
-function fakeSolidLsp(calls: FakeCalls, options: { symbols?: readonly unknown[]; references?: readonly SolidLspLocation[]; definitions?: readonly SolidLspLocation[] } = {}): SolidLspBridge {
+function fakeSolidLsp(calls: FakeCalls, options: { symbols?: readonly unknown[]; documentSymbols?: readonly unknown[]; references?: readonly SolidLspLocation[]; definitions?: readonly SolidLspLocation[] } = {}): SolidLspBridge {
   return {
     async ensureStarted(): Promise<void> {
       calls.solidlsp.push("ensureStarted");
@@ -57,7 +57,7 @@ function fakeSolidLsp(calls: FakeCalls, options: { symbols?: readonly unknown[];
     },
     async symbols(_file: string): Promise<readonly unknown[]> {
       calls.solidlsp.push("symbols");
-      return [];
+      return options.documentSymbols ?? [];
     },
     async workspaceSymbols(_query: string): Promise<readonly unknown[]> {
       calls.solidlsp.push("workspaceSymbols");
@@ -143,6 +143,83 @@ describe("planner routing with a substrate", () => {
       // rg did not produce the answer.
       expect(outcome.results.some((result) => result.reason.includes("exact lexical"))).toBe(false);
       expect(outcome.receipt.stages.some((stage) => stage.mechanism === "solidlsp" && stage.candidates > 0)).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("exact semantic coordinate goes straight to references — NO workspaceSymbols, NO rg discovery", async () => {
+    const calls: FakeCalls = { helper: [], solidlsp: [], rg: [] };
+    const root = workspace();
+    try {
+      const substrate = fakeSubstrate(
+        fakeHelper(calls),
+        fakeSolidLsp(calls, {
+          references: [{ file: "beta.ts", start: { line: 2, character: 9 }, end: { line: 2, character: 14 } }],
+        }),
+      );
+      // The focused CodeSymbol already knows path/line/column (1-based semantic convention).
+      const outcome = await syntelligentSearch({ query: "who calls greet?", intent: "who-calls-this", referent: { worldId: "local", workspace: "ws", kind: "CodeSymbol", id: "alpha.ts:1", name: "greet", location: { path: "alpha.ts", line: 1, column: 17 } } }, context(root, substrate));
+      // Coordinate > symbol lookup: discovery mechanisms were never consulted.
+      expect(calls.solidlsp).not.toContain("workspaceSymbols");
+      expect(calls.solidlsp).toContain("references");
+      expect(calls.solidlsp.filter((call) => call === "references").length).toBe(1);
+      // The known coordinate was converted 1-based → 0-based for the mechanism.
+      expect(outcome.results.length).toBe(1);
+      expect(outcome.results[0]!.location?.line).toBe(3);
+      // Receipt proves the negative: only the coordinate and the semantic stage ran.
+      const stageNames = outcome.receipt.stages.map((stage) => stage.name);
+      expect(stageNames).toContain("attention-coordinate");
+      expect(stageNames).toContain("semantic-references");
+      expect(stageNames).not.toContain("workspace-symbol-resolution");
+      expect(stageNames).not.toContain("declaration-position-fallback");
+      expect(stageNames).not.toContain("document-warmup");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("partial coordinate refines file-locally (line read), never workspace-wide", async () => {
+    const calls: FakeCalls = { helper: [], solidlsp: [], rg: [] };
+    const root = workspace();
+    try {
+      const substrate = fakeSubstrate(
+        fakeHelper(calls),
+        fakeSolidLsp(calls, {
+          references: [{ file: "beta.ts", start: { line: 2, character: 9 }, end: { line: 2, character: 14 } }],
+        }),
+      );
+      // File+line known, column absent: the smallest refinement reads that one line.
+      const outcome = await syntelligentSearch({ query: "who calls greet?", intent: "who-calls-this", referent: { worldId: "local", workspace: "ws", kind: "CodeSymbol", id: "alpha.ts:1", name: "greet", location: { path: "alpha.ts", line: 1 } } }, context(root, substrate));
+      expect(calls.solidlsp).not.toContain("workspaceSymbols");
+      expect(calls.solidlsp).toContain("references");
+      expect(outcome.results.length).toBe(1);
+      const stageNames = outcome.receipt.stages.map((stage) => stage.name);
+      expect(stageNames).toContain("document-refinement");
+      expect(stageNames).not.toContain("workspace-symbol-resolution");
+      expect(stageNames).not.toContain("declaration-position-fallback");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("partial coordinate falls back to document symbols when the line read is ambiguous", async () => {
+    const calls: FakeCalls = { helper: [], solidlsp: [], rg: [] };
+    const root = workspace();
+    try {
+      const substrate = fakeSubstrate(
+        fakeHelper(calls),
+        fakeSolidLsp(calls, {
+          documentSymbols: [{ name: "other", location: { start: { line: 3, character: 7 } }, children: [{ name: "greet", location: { start: { line: 0, character: 16 } } }] }],
+          references: [{ file: "beta.ts", start: { line: 2, character: 9 }, end: { line: 2, character: 14 } }],
+        }),
+      );
+      // Line points somewhere the name does not appear: refinement uses document symbols.
+      const outcome = await syntelligentSearch({ query: "who calls greet?", intent: "who-calls-this", referent: { worldId: "local", workspace: "ws", kind: "CodeSymbol", id: "alpha.ts:4", name: "greet", location: { path: "alpha.ts", line: 4 } } }, context(root, substrate));
+      expect(calls.solidlsp).toContain("symbols");
+      expect(calls.solidlsp).not.toContain("workspaceSymbols");
+      expect(outcome.receipt.stages.map((stage) => stage.name)).toContain("document-refinement");
+      expect(outcome.results.length).toBe(1);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -281,5 +358,55 @@ describe("structural map enrichment", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("declaration-position recovery (fallback only)", () => {
+  let declarationPattern: (name: string) => string;
+  let declarationColumn: (lineText: string, name: string) => number;
+  beforeAll(async () => {
+    ({ declarationPattern, declarationColumn } = await import("../../src/focus/mechanisms.ts"));
+  });
+
+  test("recognizes common declaration forms with modifiers and whitespace", () => {
+    const pattern = declarationPattern("greet");
+    const cases = [
+      "function greet() {}",
+      "async function greet() {}",
+      "export function greet() {}",
+      "export async function greet() {}",
+      "export default async function greet() {}",
+      "const greet = () => {}",
+      "export const greet = 1;",
+      "let greet: number;",
+      "var greet = 2;",
+      "class greet {}",
+      "export class greet {}",
+      "export abstract class greet {}",
+      "interface greet {}",
+      "export interface greet {}",
+      "type greet = string;",
+      "export  type  greet  =  string;",
+    ];
+    for (const line of cases) expect(new RegExp(pattern).test(line), line).toBe(true);
+    // Non-declarations must not match.
+    for (const line of ["return greet;", "this.greet();", "mygreet(1);", "const notgreet = 1;"]) {
+      expect(new RegExp(pattern).test(line), line).toBe(false);
+    }
+  });
+
+  test("escapes regex metacharacters in symbol names", () => {
+    const pattern = declarationPattern("weird$Name.x");
+    expect(new RegExp(pattern).test("const weird$Name.x = 1;")).toBe(true);
+    expect(new RegExp(pattern).test("const weirdXName = 1;")).toBe(false);
+    expect(new RegExp(pattern).test("export const weird$Namex = 1;")).toBe(false);
+  });
+
+  test("declarationColumn finds a boundary-respecting occurrence", () => {
+    expect(declarationColumn("export async function greet(name: string) {", "greet")).toBe(22);
+    expect(declarationColumn("const greet$ = 1;", "greet")).toBe(6); // `greet$` is a different identifier… name `greet$` itself:
+    expect(declarationColumn("const greet$ = 1;", "greet$")).toBe(6);
+    expect(declarationColumn("export const greet=1;", "greet")).toBe(13);
+    expect(declarationColumn("no match here", "greet")).toBe(0);
   });
 });

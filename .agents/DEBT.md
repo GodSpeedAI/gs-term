@@ -360,27 +360,29 @@ Owners: `gs-term` · `Cognate` · `DomainForge` · `Bun` · `unresolved`.
 ## Phase 3.5 new debt
 
 ### D-040 Devbox nix toolchain cannot build the Rust helper on this host
-- **Current behavior:** the devbox shell's nix gcc 16.2 wrapper produces build-script binaries
-  that SIGSEGV under this WSL2 kernel (proc-macro2/quote/ort-sys build scripts crash);
-  `export CC/CXX` from the gcc-wrapper is unset in `devbox.json`'s init_hook so builds use the
-  rustup-managed 1.98.0 toolchain with the host linker. Devbox still provides python/uv/rg/git/ssh
-  deterministically; the Rust toolchain comes from rustup (`rust-toolchain.toml` pin).
-- **Why debt:** the "clean machine" story currently assumes a working host C toolchain for the
-  Rust half; a fresh-machine proof of the FULL build needs either a fixed nixpkgs gcc or
-  CI (GitHub Actions runner) to be the oracle. The full gate DID pass node-free on this host with
-  the pinned bun bootstrap + host rustup.
-- **Evidence:** `devbox run bootstrap` segfault logs (2026-10-05); `scripts/README.md` notes.
-- **Reconsider:** first CI run, or when nixpkgs gcc/glibc updates land. · **Owner:** gs-term ·
-  **Status:** `watch`
+- **Current behavior:** on this WSL2 host the devbox shell's nix gcc 16.2 wrapper produces
+  build-script binaries that SIGSEGV (proc-macro2/quote/ort-sys build scripts crash). Phase 3.6
+  made the toolchain boundary explicit and self-adjudicating: `scripts/bootstrap.sh` smoke-tests
+  `cc` (compile + run a trivial binary) and deterministically strips `/nix/store` toolchain dirs
+  from PATH when the smoke fails, then installs rustup + the pinned 1.98.0 toolchain itself if
+  cargo is missing. The toolchain sources are explicit: rustup + `rust-toolchain.toml` for Rust;
+  a working host `cc` for linking (devbox still owns python/uv/rg/git/ssh deterministically).
+- **CI adjudication:** `.github/workflows/verify.yml` runs the same bootstrap on a fresh
+  ubuntu-latest runner. If it passes there, this debt narrows to "WSL-host-specific nix gcc
+  incompatibility" (not a general Devbox defect). If it reproduces, the smoke-test strip makes
+  the fallback explicit rather than environmental. · **Owner:** gs-term · **Status:** `watch`
+  (pending first CI run result)
 
 ### D-041 SolidLSP workspace/symbol (navto) needs loaded projects on tsserver
-- **Current behavior:** on a freshly started workspace, tsserver answers navto with
-  `No Project` / empty until files are opened; the planner therefore warms the declaring file
-  (document symbols) before reference resolution and falls back to an rg **position finder**
-  (declaration pattern) when the workspace search is empty — the semantic answer itself still
-  comes from SolidLSP references (J9 proof: 13 references incl. the true caller).
+- **Update (Phase 3.6):** importance reduced by coordinate-first routing. The planner now spends
+  the focused `CodeSymbol`'s own path/line/column DIRECTLY (`attention-coordinate` stage) and
+  never calls workspaceSymbols or rg for exact-coordinate contextual operations — proved by J9-A
+  (0 discovery calls). navto remains only on the name-only recovery path (J9-B), where the
+  observed chain is workspace-symbol-resolution → declaration-position-fallback →
+  document-warmup → semantic-references. The navto limitation itself is unchanged (tsserver
+  "No Project" on cold workspaces; tolerated, never fatal).
 - **Reconsider:** if solidlsp gains an explicit "load project" API or tsserver navto behavior
-  changes. · **Owner:** gs-term (planner) · **Status:** `watch`
+  changes. · **Owner:** gs-term (planner) · **Status:** `watch` (narrowed scope)
 
 ### D-042 Node appears on dev PATHs; the shim boundary must stay explicit
 - **Current behavior:** Bun executes typescript-language-server (a Node program) through a

@@ -19,7 +19,7 @@ import type {
 import type { SemanticHelper } from "../mechanisms/semantic-helper.ts";
 import type { SolidLspBridge } from "../mechanisms/solidlsp.ts";
 import { affordancesFor } from "./affordances.ts";
-import { buildStructuralMap, resolveAvailability, rgFiles, rgSearch } from "./mechanisms.ts";
+import { buildStructuralMap, declarationPattern, declarationColumn, resolveAvailability, rgFiles, rgSearch } from "./mechanisms.ts";
 import { conceptQueryFor } from "./concept-index.ts";
 
 const MAX_RESULTS = 5;
@@ -138,36 +138,123 @@ async function probeSubstrateClients(context: SearchContext): Promise<SubstrateC
   return { helper, solidlsp };
 }
 
-/** Resolve a symbol name via SolidLSP workspace symbols (exact-name preference). */
-async function locateSymbol(solidlsp: SolidLspBridge, name: string, context: SearchContext): Promise<{ file: string; line: number; column: number } | undefined> {
-  const record = (s: unknown): { name?: unknown; location?: { file?: unknown; start?: { line?: unknown; character?: unknown } } } | undefined =>
-    (s ?? undefined) as { name?: unknown; location?: { file?: unknown; start?: { line?: unknown; character?: unknown } } } | undefined;
-  const pick = (symbols: readonly unknown[]): { file: string; line: number; column: number } | undefined => {
-    const exact = symbols
-      .map(record)
-      .filter((s): s is { name: string; location: { file: string; start: { line: number; character: number } } } =>
-        s?.name === name && typeof s.location?.file === "string" && typeof s.location?.start?.line === "number" && typeof s.location?.start?.character === "number");
-    const candidate = exact[0];
-    return candidate ? { file: candidate.location.file, line: candidate.location.start.line, column: candidate.location.start.character } : undefined;
-  };
-  // The project index may still be loading right after a cold start; retry
-  // briefly rather than degrading on the first empty response.
+/**
+ * How the semantic target's position was established — this is receipt provenance, not telemetry.
+ * Durable rule (Phase 3.6): known semantic coordinates outrank symbol discovery.
+ *   coordinate > symbol lookup > textual declaration recovery
+ */
+type TargetProvenance = "exact-coordinate" | "document-refined" | "workspace-symbol" | "declaration-fallback";
+
+interface SymbolTarget {
+  readonly name: string;
+  readonly file: string;
+  /** 0-based (mechanism convention); EntityRef locations are 1-based (semantic convention). */
+  readonly line: number;
+  readonly column: number;
+  readonly provenance: TargetProvenance;
+}
+
+interface ResolvedTarget {
+  readonly target?: SymbolTarget;
+  /** Stages consumed during resolution (pushed by the caller in order). */
+  readonly stages: Stage[];
+}
+
+const workspaceRecord = (s: unknown): { name?: unknown; location?: { file?: unknown; start?: { line?: unknown; character?: unknown } } } | undefined =>
+  (s ?? undefined) as { name?: unknown; location?: { file?: unknown; start?: { line?: unknown; character?: unknown } } } | undefined;
+
+function pickWorkspaceSymbol(symbols: readonly unknown[], name: string): SymbolTarget | undefined {
+  const exact = symbols
+    .map(workspaceRecord)
+    .filter((s): s is { name: string; location: { file: string; start: { line: number; character: number } } } =>
+      s?.name === name && typeof s.location?.file === "string" && typeof s.location?.start?.line === "number" && typeof s.location?.start?.character === "number");
+  const candidate = exact[0];
+  return candidate ? { name, file: candidate.location.file, line: candidate.location.start.line, column: candidate.location.start.character, provenance: "workspace-symbol" } : undefined;
+}
+
+/**
+ * Resolve the semantic target for a known-symbol operation, spending the FEWEST mechanisms:
+ *
+ *   exact coordinate (path+line+column on the focused CodeSymbol) → SolidLSP directly;
+ *   partial coordinate (file+line, no column) → file-local refinement → SolidLSP;
+ *   name only → workspaceSymbols → bounded rg declaration recovery → SolidLSP.
+ *
+ * A `document symbols` call appears only where it refines or warms — never as rediscovery
+ * of a coordinate the environment already holds.
+ */
+async function resolveSymbolTarget(solidlsp: SolidLspBridge, context: SearchContext, name: string, referent: EntityRef | undefined): Promise<ResolvedTarget> {
+  const stages: Stage[] = [];
+  const location = referent?.location;
+
+  // ── Tier 1: exact semantic coordinate — the attention architecture already knows. ──
+  if (typeof location?.path === "string" && typeof location?.line === "number" && typeof location?.column === "number" && location.line >= 1 && location.column >= 1) {
+    stages.push({ name: "attention-coordinate", mechanism: "solidlsp", candidates: 1 });
+    return { target: { name, file: location.path, line: location.line - 1, column: location.column - 1, provenance: "exact-coordinate" }, stages };
+  }
+
+  // ── Tier 2: partial coordinate (file+line known, column absent/uncertain) ──────────
+  if (typeof location?.path === "string" && typeof location?.line === "number" && location.line >= 1) {
+    // Smallest refinement first: read only that one line through the world port and locate
+    // the identifier on it (file-local, bounded — never a workspace search).
+    try {
+      const read = await context.process.exec({ argv: ["sed", "-n", `${location.line}p`, location.path], cwd: context.root, timeoutMs: 5_000 });
+      if (read.exitCode === 0 && read.stdout.includes(name)) {
+        const column = declarationColumn(read.stdout, name);
+        stages.push({ name: "document-refinement", mechanism: "solidlsp", candidates: 1 });
+        return { target: { name, file: location.path, line: location.line - 1, column, provenance: "document-refined" }, stages };
+      }
+    } catch {
+      // fall through to document symbols
+    }
+    // File-local document symbols (opens the file, which also warms the project).
+    const symbols = await solidlsp.symbols(location.path).catch(() => []);
+    const found = findSymbolInDocument(symbols, name);
+    if (found) {
+      stages.push({ name: "document-refinement", mechanism: "solidlsp", candidates: 1 });
+      return { target: { name, file: location.path, line: found.line, column: found.column, provenance: "document-refined" }, stages };
+    }
+    // The line/name pair did not survive refinement; degrade to the name-only tier.
+  }
+
+  // ── Tier 3: name only — recovery, not the normal contextual path ──────────────────
+  // The project index may still be loading right after a cold start; retry briefly
+  // rather than degrading on the first empty response. tsserver navto on a cold
+  // workspace can also report "No Project" (D-041) — tolerated, never fatal.
   let symbols: readonly unknown[] = [];
   for (let attempt = 0; attempt < 3 && symbols.length === 0; attempt++) {
     if (attempt > 0) await Bun.sleep(1_200);
     symbols = await solidlsp.workspaceSymbols(name).catch(() => []);
-    const located = pick(symbols);
-    if (located) return located;
+    const located = pickWorkspaceSymbol(symbols, name);
+    if (located) {
+      stages.push({ name: "workspace-symbol-resolution", mechanism: "solidlsp", candidates: symbols.length });
+      return { target: located, stages };
+    }
   }
-  // tsserver's workspace search only covers LOADED files; on a cold workspace
-  // it may stay empty. Fall back to rg purely as a POSITION FINDER for the
-  // declaration — the semantic answer itself still comes from the language
-  // server (references/definition resolve from this position).
-  const declaration = await rgSearch(context.process, context.root, `export (async )?function ${name}|export class ${name}|export const ${name}|export interface ${name}|export type ${name}`, { regex: true, max: 5 }).catch(() => []);
+  stages.push({ name: "workspace-symbol-resolution", mechanism: "solidlsp", candidates: symbols.length });
+
+  // rg purely as a POSITION FINDER for the declaration — the semantic answer itself
+  // still comes from the language server.
+  const declaration = await rgSearch(context.process, context.root, declarationPattern(name), { regex: true, max: 5 }).catch(() => []);
+  stages.push({ name: "declaration-position-fallback", mechanism: "rg", candidates: declaration.length });
   const hit = declaration[0];
-  if (!hit) return undefined;
-  const column = Math.max(hit.text.indexOf(name), 0);
-  return { file: hit.path, line: hit.line - 1, column };
+  if (!hit) return { stages };
+  const column = declarationColumn(hit.text, name);
+  return { target: { name, file: hit.path, line: hit.line - 1, column, provenance: "declaration-fallback" }, stages };
+}
+
+/** Depth-first search of serialized document symbols for an exact-name match. */
+function findSymbolInDocument(symbols: readonly unknown[], name: string): { line: number; column: number } | undefined {
+  const record = (s: unknown): { name?: unknown; location?: { start?: { line?: unknown; character?: unknown } }; children?: readonly unknown[] } | undefined =>
+    (s ?? undefined) as { name?: unknown; location?: { start?: { line?: unknown; character?: unknown } }; children?: readonly unknown[] } | undefined;
+  for (const raw of symbols) {
+    const symbol = record(raw);
+    if (symbol?.name === name && typeof symbol.location?.start?.line === "number" && typeof symbol.location?.start?.character === "number") {
+      return { line: symbol.location.start.line, column: symbol.location.start.character };
+    }
+    const child = symbol?.children ? findSymbolInDocument(symbol.children, name) : undefined;
+    if (child) return child;
+  }
+  return undefined;
 }
 
 export async function syntelligentSearch(request: SearchRequest, context: SearchContext): Promise<SearchOutcome> {
@@ -212,19 +299,32 @@ export async function syntelligentSearch(request: SearchRequest, context: Search
     verified = results.length;
   }
 
-  // ── Known symbol: SolidLSP directly (semantic references, not regex) ──────
+  // ── Known symbol: coordinate-first SolidLSP (recovery only when needed) ───
   if (results.length < MAX_RESULTS && (intent === "who-calls-this" || intent === "what-is-this") && clients.solidlsp && usable("solidlsp")) {
-    const symbolName = request.referent?.name ?? request.snapshot?.referent?.name ?? pickSearchTerm(request, intent);
+    const referent = request.referent ?? request.snapshot?.referent;
+    const symbolName = referent?.name ?? pickSearchTerm(request, intent);
     if (symbolName) {
-      const located = await locateSymbol(clients.solidlsp, symbolName, context).catch(() => undefined);
+      const resolved = await resolveSymbolTarget(clients.solidlsp, context, symbolName, referent).catch(() => ({ stages: [] as Stage[], target: undefined } as ResolvedTarget));
+      stages.push(...resolved.stages);
+      const located = resolved.target;
       if (located) {
-        // Open the declaring file first: tsserver's reference resolution needs
-        // the file (and its project) loaded — a cold ask returns nothing, and
-        // the project graph may still be configuring for a few seconds.
-        await clients.solidlsp.symbols(located.file).catch(() => []);
+        // Warm the project only where the target's provenance needs it: exact
+        // coordinates go straight to the semantic operation; recovery paths
+        // open the declaring file because tsserver needs loaded documents.
+        const warm = async (): Promise<void> => {
+          const opened = await clients.solidlsp!.symbols(located.file).catch(() => []);
+          stages.push({ name: "document-warmup", mechanism: "solidlsp", candidates: opened.length });
+        };
+        if (located.provenance === "declaration-fallback") await warm();
         let locations: readonly { readonly file: string; readonly start: { readonly line: number; readonly character: number }; readonly end: { readonly line: number; readonly character: number } }[] = [];
-        for (let attempt = 0; attempt < 3; attempt++) {
-          if (attempt > 0) await Bun.sleep(4_000);
+        for (let attempt = 0; attempt < 5; attempt++) {
+          if (attempt > 0) {
+            // A cold references ask can return empty while the project configures
+            // (observed ~16-25s worst case); one warm-up then bounded retries —
+            // never a rediscovery of the coordinate.
+            if (attempt === 1) await warm();
+            await Bun.sleep(4_000);
+          }
           locations = await (intent === "who-calls-this"
             ? clients.solidlsp.references(located.file, located.line, located.column)
             : clients.solidlsp.definition(located.file, located.line, located.column)

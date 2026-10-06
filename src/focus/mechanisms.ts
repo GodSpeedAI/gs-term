@@ -8,6 +8,42 @@ import type { MechanismAvailability, StructuralEdge, StructuralMap, StructuralNo
 const SEARCH_TIMEOUT_MS = 10_000;
 const MAX_FILES = 4_000;
 
+/**
+ * Declaration-position pattern for FALLBACK recovery only (Phase 3.6). Recognizes common
+ * JS/TS declaration forms — never a parser, never the primary answer. The symbol name is
+ * regex-escaped; `default`/`abstract`/`async` modifiers and whitespace variation are covered.
+ * Rust's regex engine (rg default) has no lookahead, so identifier boundaries use \b and the
+ * caller refines the exact column on the matched line.
+ */
+export function declarationPattern(name: string): string {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const modifiers = String.raw`(?:export\s+)?(?:default\s+)?(?:abstract\s+)?(?:async\s+)?`;
+  return [
+    String.raw`${modifiers}function\s+${escaped}\b`,
+    String.raw`(?:export\s+)?(?:const|let|var)\s+${escaped}\b`,
+    String.raw`${modifiers}class\s+${escaped}\b`,
+    String.raw`(?:export\s+)?interface\s+${escaped}\b`,
+    String.raw`(?:export\s+)?type\s+${escaped}\b`,
+  ].join("|");
+}
+
+/**
+ * Column (0-based) of the FIRST identifier occurrence on the line that is not a suffix of a
+ * larger identifier — a declaration line like `export function foo(` yields foo's start.
+ */
+export function declarationColumn(lineText: string, name: string): number {
+  const identifierChars = /[A-Za-z0-9_$]/;
+  let from = 0;
+  for (;;) {
+    const at = lineText.indexOf(name, from);
+    if (at < 0) return Math.max(lineText.indexOf(name), 0);
+    const before = at > 0 ? lineText[at - 1] : "";
+    const after = lineText[at + name.length];
+    if (!identifierChars.test(before ?? "") && !identifierChars.test(after ?? "")) return at;
+    from = at + 1;
+  }
+}
+
 async function run(process: ProcessPort, root: string, argv: readonly string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   const result = await process.exec({ argv: [...argv], cwd: root, timeoutMs: SEARCH_TIMEOUT_MS });
   return { code: result.exitCode, stdout: result.stdout, stderr: result.stderr };

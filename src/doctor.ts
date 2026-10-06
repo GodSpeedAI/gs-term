@@ -48,8 +48,21 @@ function row(name: MechanismReadiness["name"], mechanism: MechanismReadiness, wi
   return `  ${label}  ${statusGlyph(mechanism.status)}${version}${detail}${reason}`;
 }
 
+/** Mechanisms the semantic substrate REQUIRES (checked by --require-semantic). */
+const SEMANTIC_REQUIRED: readonly MechanismReadiness["name"][] = [
+  "bun",
+  "rg",
+  "zvec-grep-rust",
+  "zvec-rust",
+  "potion-model",
+  "solidlsp",
+  "python-uv",
+  "typescript-server",
+];
+
 export async function doctor(argv: readonly string[]): Promise<number> {
-  const deep = argv.includes("--probe");
+  const deep = argv.includes("--probe") || argv.includes("--require-semantic");
+  const requireSemantic = argv.includes("--require-semantic");
   const root = resolve(import.meta.dir, "..");
   const config = await loadConfig(root);
   const mechanisms = mechanismsOf(config);
@@ -72,6 +85,24 @@ export async function doctor(argv: readonly string[]): Promise<number> {
   const readyCount = rows.filter((mechanism) => mechanism.status === "ready").length;
   console.log(`${readyCount}/${rows.length} mechanisms ready${deep ? "" : " (light mode — pass --probe to start managed processes)"}`);
 
+  // Expectation profiles: normal doctor reports the host truthfully; the
+  // require-semantic profile additionally FAILS unless the semantic substrate
+  // is fully ready and enabled (release/CI oracle — never green by skipping).
+  if (requireSemantic) {
+    if (!mechanisms.enabled) {
+      console.log("require-semantic: NOT satisfied — mechanisms disabled by configuration");
+      return 2;
+    }
+    const missing = SEMANTIC_REQUIRED
+      .map((name) => rows.find((mechanism) => mechanism.name === name))
+      .filter((mechanism) => mechanism === undefined || mechanism.status !== "ready");
+    if (missing.length > 0) {
+      console.log(`require-semantic: NOT satisfied — ${missing.map((mechanism) => `${DISPLAY[mechanism!.name]}(${mechanism!.status}${mechanism!.reason ? `: ${mechanism!.reason}` : ""})`).join(", ")}`);
+      return 2;
+    }
+    console.log("require-semantic: satisfied (all required semantic mechanisms ready)");
+    return 0;
+  }
   if (!mechanisms.enabled) {
     console.log("mechanisms disabled by configuration — semantic substrate not mounted");
     return 0;

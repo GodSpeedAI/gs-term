@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { discoverHelperBinary, SemanticHelper } from "../../src/mechanisms/semantic-helper.ts";
 import { JsonLinesProcess } from "../../src/mechanisms/jsonlines.ts";
+import { semanticSkipOrThrow } from "../support/semantic-gate.ts";
 
 const REPO_ROOT = resolve(import.meta.dir, "..", "..");
 
@@ -93,11 +94,15 @@ describe("semantic helper integration (built helper)", () => {
   let helper: SemanticHelper;
 
   beforeAll(() => {
-    if (binary === undefined) {
-      console.log("skipping helper integration: gsterm-semantic not built (cargo build --release -p gsterm-semantic)");
+    // Same policy as the acceptance journeys: skip honestly in developer mode,
+    // fail in release mode (GSTERM_REQUIRE_SEMANTIC=1). Helper scope only —
+    // these tests never touch the SolidLSP bridge.
+    const skip = semanticSkipOrThrow("mechanisms helper integration", "helper");
+    if (skip) {
+      console.log(`skipping helper integration: ${skip}`);
       return;
     }
-    helper = new SemanticHelper({ binary });
+    helper = new SemanticHelper({ binary: binary! });
   });
 
   afterAll(async () => {

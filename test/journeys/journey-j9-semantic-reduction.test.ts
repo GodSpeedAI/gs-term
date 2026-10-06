@@ -1,25 +1,30 @@
-// J9/J10/J14 acceptance proof (Phase 3.5): the REAL semantic substrate — the
-// built Rust helper (zvec-grep + zvec concepts) and the SolidLSP bridge —
-// running against the gs-term repository itself. Proves:
-//   1. `/ who calls this?` answers with SolidLSP references (rg not primary);
-//   2. a conceptual query whose wording appears nowhere in the source reduces
-//      through concepts → structural scope → zvec-grep → verification into a
-//      small bounded result set (with reduction measurements);
-//   3. an architecture question stops at the concept layer.
-// Skips honestly when the substrate is not built (GSTERM_SKIP_SEMANTIC=1 or a
-// clean checkout without bootstrap); a skipped proof is an unmet gate for
-// release — it must run in the phase validation.
+// J9/J10 acceptance proof (Phases 3.5 + 3.6): the REAL semantic substrate —
+// the built Rust helper (zvec-grep + zvec concepts) and the SolidLSP bridge —
+// running against the gs-term repository itself.
+//
+// Phase 3.6 durable rule under test: known semantic coordinates outrank symbol
+// discovery (coordinate > symbol lookup > textual declaration recovery).
+//   A. exact coordinate  — AttentionSnapshot/ referent holds path+line+column;
+//      SolidLSP.references executes DIRECTLY; workspaceSymbols and rg
+//      declaration recovery are never invoked (proved via receipt stages).
+//   B. name-only         — recovery chain: workspaceSymbols → (tolerated cold)
+//     → rg position finder → document warm-up → SolidLSP references.
+//   C. partial coordinate— file+line known, column absent → file-local
+//      refinement → SolidLSP references (no workspace-wide discovery).
+//   J10. conceptual query reduces 169 files to ≤5; architecture questions stop
+//      at the concept layer.
+// Skip discipline: developer mode skips honestly; GSTERM_REQUIRE_SEMANTIC=1
+// (release/CI oracle) makes a missing substrate a FAILURE, not a skip.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Caller } from "@cognate/runtime-api";
 import { createGsTermRuntime, type GsTermRuntime } from "../../src/app/runtime.ts";
 import type { GsTermConfig } from "../../src/config.ts";
-import { discoverHelperBinary } from "../../src/mechanisms/semantic-helper.ts";
 import { json } from "../../src/agents/shared.ts";
+import { REPO_ROOT, semanticSkipOrThrow } from "../support/semantic-gate.ts";
 
-const REPO_ROOT = resolve(import.meta.dir, "../..");
-const system: Caller = { tenant: "local", actor: { id: "system", kind: "service" } };
+const webmcp: Caller = { tenant: "local", actor: { id: "webmcp", kind: "user" } };
 
 let app: GsTermRuntime | undefined;
 let skipReason: string | undefined;
@@ -45,16 +50,15 @@ interface OutcomeShape {
   readonly receipt: { stages: readonly StageRecord[]; availability: { name: string; status: string }[]; reduction: Record<string, number>; provenance: { method: string; crossWorld: boolean } };
 }
 
-async function search(query: string, options: { intent?: string; referent?: Record<string, unknown> } = {}): Promise<OutcomeShape> {
+async function search(caller: Caller, query: string, options: { referent?: Record<string, unknown> } = {}): Promise<{ outcome: OutcomeShape; elapsedMs: number }> {
   const started = Date.now();
-  const run = await app!.runtime.service.startRun(system, {
+  const run = await app!.runtime.service.startRun(caller, {
     agent: "agent.focus",
     input: json({
       intent: "search",
       query,
       sessionId: "main",
       worldId: "local",
-      ...(options.intent ? { forcedIntent: options.intent } : {}),
       ...(options.referent ? { referent: options.referent } : {}),
     }),
     idempotencyKey: crypto.randomUUID(),
@@ -64,10 +68,11 @@ async function search(query: string, options: { intent?: string; referent?: Reco
   const deadline = Date.now() + 420_000;
   for (;;) {
     await app!.runtime.idle(50).catch(() => undefined);
-    const state = await app!.runtime.service.getRun(system, { runId: run.runId });
+    const state = await app!.runtime.service.getRun(caller, { runId: run.runId });
     if (state.status === "completed") {
-      console.log(`query "${query}" settled in ${Date.now() - started}ms`);
-      return state.output as unknown as OutcomeShape;
+      const elapsedMs = Date.now() - started;
+      console.log(`query "${query}" (${caller.actor.id}) settled in ${elapsedMs}ms`);
+      return { outcome: state.output as unknown as OutcomeShape, elapsedMs };
     }
     if (state.status === "failed" || state.status === "cancelled") {
       throw new Error(`search run failed: ${(state as { error?: string }).error ?? state.status}`);
@@ -77,17 +82,18 @@ async function search(query: string, options: { intent?: string; referent?: Reco
   }
 }
 
+/** The true 1-based line and 0-based column of a symbol's export in the live source. */
+async function trueDeclaration(relativePath: string, name: string): Promise<{ line: number; column: number }> {
+  const lines = (await Bun.file(resolve(REPO_ROOT, relativePath)).text()).split("\n");
+  const index = lines.findIndex((line) => line.includes(`function ${name}`) || line.includes(`const ${name}`) || line.includes(`class ${name}`));
+  if (index < 0) throw new Error(`declaration of ${name} not found in ${relativePath}`);
+  return { line: index + 1, column: lines[index]!.indexOf(name) };
+}
+
 beforeAll(async () => {
-  if (Bun.env.GSTERM_SKIP_SEMANTIC === "1") {
-    skipReason = "GSTERM_SKIP_SEMANTIC=1";
-    return;
-  }
-  if (!discoverHelperBinary("", REPO_ROOT)) {
-    skipReason = "gsterm-semantic not built (run scripts/bootstrap.sh)";
-    return;
-  }
-  if (!existsSync(resolve(REPO_ROOT, "solidlsp/.venv"))) {
-    skipReason = "solidlsp/.venv missing (run scripts/bootstrap.sh)";
+  skipReason = semanticSkipOrThrow("journey-j9/j10 semantic acceptance");
+  if (skipReason) {
+    console.log(`SKIP: ${skipReason}`);
     return;
   }
   app = await createGsTermRuntime({ config: config(), store: ":memory:", domainRoot: REPO_ROOT });
@@ -97,22 +103,63 @@ afterAll(async () => {
   await app?.close();
 });
 
-describe("J9 — / who calls this? (SolidLSP primary)", () => {
-  test("references of a real repo symbol come from the language mechanism", async () => {
+describe("J9 — / who calls this? (coordinate-first, Phase 3.6)", () => {
+  test("A: exact semantic coordinate → SolidLSP.references directly; NO workspaceSymbols, NO rg recovery (webmcp caller)", async () => {
     if (skipReason) return console.log(`SKIP: ${skipReason}`);
-    // `syntelligentSearch` is exported by src/focus/search.ts and invoked from src/app/runtime.ts.
-    const outcome = await search("who calls syntelligentSearch?", {
-      intent: "who-calls-this",
-      referent: { worldId: "local", workspace: "gs-term", kind: "CodeSymbol", id: "src/focus/search.ts:77", name: "syntelligentSearch" },
+    const declaration = await trueDeclaration("src/focus/search.ts", "syntelligentSearch");
+    // The focused CodeSymbol carries its true semantic coordinate.
+    const { outcome, elapsedMs } = await search(webmcp, "who calls this?", {
+      referent: { worldId: "local", workspace: "gs-term", kind: "CodeSymbol", id: `src/focus/search.ts:${declaration.line}`, name: "syntelligentSearch", location: { path: "src/focus/search.ts", line: declaration.line, column: declaration.column + 1 } },
     });
     expect(outcome.receipt.availability.find((a) => a.name === "solidlsp")?.status).toBe("ready");
-    const semanticStage = outcome.receipt.stages.find((stage) => stage.mechanism === "solidlsp");
+    const stageNames = outcome.receipt.stages.map((stage) => stage.name);
+    // The coordinate was spent, not rediscovered.
+    expect(stageNames).toContain("attention-coordinate");
+    expect(stageNames).not.toContain("workspace-symbol-resolution");
+    expect(stageNames).not.toContain("declaration-position-fallback");
+    const semanticStage = outcome.receipt.stages.find((stage) => stage.name === "semantic-references");
+    expect(semanticStage?.candidates).toBeGreaterThan(0);
+    // True caller found; bounded; world provenance preserved.
+    expect(outcome.results.length).toBeGreaterThan(0);
+    expect(outcome.results.length).toBeLessThanOrEqual(5);
+    expect(outcome.results.every((result) => result.mechanisms.includes("solidlsp"))).toBe(true);
+    expect(outcome.results.some((result) => result.entity.location?.path === "src/app/runtime.ts")).toBe(true);
+    expect(outcome.receipt.provenance.crossWorld).toBe(false);
+    console.log(`A exact-coordinate latency: ${elapsedMs}ms (stages: ${stageNames.join(" → ")})`);
+  }, 480_000);
+
+  test("B: name-only recovery — workspaceSymbols → (cold tolerated) → rg position → warm-up → SolidLSP references", async () => {
+    if (skipReason) return console.log(`SKIP: ${skipReason}`);
+    const { outcome, elapsedMs } = await search(webmcp, "who calls syntelligentSearch?", {
+      referent: { worldId: "local", workspace: "gs-term", kind: "CodeSymbol", id: "syntelligentSearch", name: "syntelligentSearch" },
+    });
+    expect(outcome.receipt.availability.find((a) => a.name === "solidlsp")?.status).toBe("ready");
+    // The final answer is semantic, never a lexical stand-in.
+    const semanticStage = outcome.receipt.stages.find((stage) => stage.name === "semantic-references");
     expect(semanticStage?.candidates).toBeGreaterThan(0);
     expect(outcome.results.length).toBeGreaterThan(0);
     expect(outcome.results.every((result) => result.mechanisms.includes("solidlsp"))).toBe(true);
-    // The real caller is found: src/app/runtime.ts invokes syntelligentSearch.
-    expect(outcome.results.some((result) => result.entity.location?.path?.startsWith("src/app/runtime.ts"))).toBe(true);
-    expect(outcome.receipt.provenance.crossWorld).toBe(false);
+    expect(outcome.results.some((result) => result.entity.location?.path === "src/app/runtime.ts")).toBe(true);
+    // The recovery chain is visible in provenance (which leg ran is environment-dependent:
+    // a warm project may satisfy workspaceSymbols; a cold one falls to rg + warm-up).
+    const stageNames = outcome.receipt.stages.map((stage) => stage.name);
+    expect(stageNames).not.toContain("attention-coordinate");
+    console.log(`B name-only latency: ${elapsedMs}ms (stages: ${stageNames.join(" → ")})`);
+  }, 480_000);
+
+  test("C: partial coordinate (file+line, no column) → document refinement → SolidLSP references", async () => {
+    if (skipReason) return console.log(`SKIP: ${skipReason}`);
+    const declaration = await trueDeclaration("src/focus/search.ts", "syntelligentSearch");
+    const { outcome, elapsedMs } = await search(webmcp, "who calls this?", {
+      referent: { worldId: "local", workspace: "gs-term", kind: "CodeSymbol", id: `src/focus/search.ts:${declaration.line}`, name: "syntelligentSearch", location: { path: "src/focus/search.ts", line: declaration.line } },
+    });
+    const stageNames = outcome.receipt.stages.map((stage) => stage.name);
+    expect(stageNames).toContain("document-refinement");
+    expect(stageNames).not.toContain("workspace-symbol-resolution");
+    expect(stageNames).not.toContain("declaration-position-fallback");
+    expect(outcome.receipt.stages.find((stage) => stage.name === "semantic-references")?.candidates).toBeGreaterThan(0);
+    expect(outcome.results.some((result) => result.entity.location?.path === "src/app/runtime.ts")).toBe(true);
+    console.log(`C partial-coordinate latency: ${elapsedMs}ms`);
   }, 480_000);
 });
 
@@ -120,7 +167,7 @@ describe("J10 — conceptual query reduction (no literal overlap required)", () 
   test("agent-focus-takeover question reduces to a bounded semantic slice", async () => {
     if (skipReason) return console.log(`SKIP: ${skipReason}`);
     // Wording chosen to NOT appear in the implementation.
-    const outcome = await search("where do we stop an agent from taking over what the human is looking at?");
+    const { outcome } = await search(webmcp, "where do we stop an agent from taking over what the human is looking at?");
     expect(outcome.receipt.availability.find((a) => a.name === "zvec")?.status).toBe("ready");
     expect(outcome.receipt.availability.find((a) => a.name === "zvec-grep")?.status).toBe("ready");
     expect(outcome.results.length).toBeGreaterThan(0);
@@ -134,7 +181,7 @@ describe("J10 — conceptual query reduction (no literal overlap required)", () 
 
   test("architecture question stops at concepts without source retrieval", async () => {
     if (skipReason) return console.log(`SKIP: ${skipReason}`);
-    const outcome = await search("give me an overview of the observation architecture", { intent: "architecture" });
+    const { outcome } = await search(webmcp, "give me an overview of the observation architecture");
     expect(outcome.receipt.stages.some((stage) => stage.name === "concept-retrieval")).toBe(true);
     expect(outcome.receipt.stages.some((stage) => stage.mechanism === "zvec-grep")).toBe(false);
     expect(outcome.results.length).toBeGreaterThan(0);

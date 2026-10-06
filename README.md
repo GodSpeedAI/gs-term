@@ -33,16 +33,24 @@ observation scope; durable state lives in `.cognate/app.sqlite` (git-ignored).
 
 ```bash
 bun run typecheck   # tsc --noEmit
-bun run test        # unit + journey + conformance + architecture (126 tests)
+bun run test        # unit + journey + conformance + architecture (130+ tests)
 bun run e2e         # Playwright acceptance sequence A–G + Phase 2/3 (chromium)
-bun run doctor      # mechanism readiness (add --probe to start managed processes)
-bash scripts/verify-all.sh [--node-free]  # the full gate + optional Node-free proof
+bun run doctor      # mechanism readiness (--probe starts managed processes;
+                    #  --require-semantic fails unless the semantic substrate is fully ready)
+bash scripts/verify-all.sh [--node-free] [--release]
 bun run verify      # typecheck + lint + test + e2e
 ```
 
+Two validation levels. **Developer**: `bun test` may skip semantic proofs honestly on an
+unbootstrapped checkout. **Release oracle** (`--release`, devbox: `devbox run verify-release`):
+node-free, `GSTERM_REQUIRE_SEMANTIC=1` makes any semantic skip a failure,
+`doctor --require-semantic` must pass — a green release job means the semantic substrate
+actually ran. The same oracle runs on a fresh GitHub runner (`.github/workflows/verify.yml`):
+Devbox toolchain → `devbox run bootstrap` (self-contained) → `devbox run verify-release`.
+
 With the full toolchain, `devbox run bootstrap` provisions everything (pinned bun 1.4.x,
-Rust 1.98.0 helper, SolidLSP uv env) and `devbox run verify` runs the same gates node-free.
-Devbox is the reproducibility oracle, NOT a product requirement.
+Rust 1.98.0 helper, SolidLSP uv env). Devbox is the reproducibility oracle, NOT a product
+requirement.
 
 Journey tests are named after the catalog ids (`test/journeys/journey-j<N>-…`). The E2E suite
 drives the real browser, real server, real PTY: typed commands settle with effects + evidence,

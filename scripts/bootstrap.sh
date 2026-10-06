@@ -1,13 +1,41 @@
 #!/usr/bin/env bash
-# gs-term bootstrap: bun deps + Rust helper build + SolidLSP sync.
-# Idempotent. Used by `devbox run bootstrap` and standalone; the same gates
-# run in scripts/verify-all.sh. Node.js is never installed or required.
+# gs-term bootstrap: bun deps + Rust toolchain + helper build + SolidLSP sync.
+# Idempotent and SELF-CONTAINED: a clean machine needs only this script (plus
+# network). Used by `devbox run bootstrap` and standalone; the same gates run
+# in scripts/verify-all.sh. Node.js is never installed or required.
+#
+# Explicit toolchain boundaries (no silent host dependence):
+#   Bun     — pinned release downloaded into .devbin/bin (nixpkgs carries only 1.3.x)
+#   Rust    — rustup + rust/rust-toolchain.toml (1.98.0); rustup installed here if missing
+#   C/C++   — the first working `cc` on PATH is smoke-tested; a broken nix-toolchain
+#             PATH is stripped deterministically (D-040 adjudication, see below)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 BUN_VERSION="${BUN_VERSION:-1.4.2}"
+RUST_VERSION="$(sed -n 's/^channel = "\(.*\)"/\1/p' rust/rust-toolchain.toml | head -1)"
 
 say() { printf '\n== %s ==\n' "$*"; }
+
+# ── 0. C toolchain sanity (D-040): a `cc` that cannot RUN its own output is
+#      worse than absent — strip broken nix toolchain dirs from PATH so cargo
+#      falls through to the host compiler. Deterministic smoke, not a guess.
+smoke_cc() {
+  local tmp; tmp="$(mktemp -d)"
+  printf 'int main(void){return 0;}\n' > "$tmp/t.c" || return 1
+  cc "$tmp/t.c" -o "$tmp/t" 2>/dev/null || { rm -rf "$tmp"; return 1; }
+  "$tmp/t" 2>/dev/null; local status=$?
+  rm -rf "$tmp"
+  return "$status"
+}
+if command -v cc >/dev/null 2>&1 && ! smoke_cc; then
+  say "smoke test: cc on PATH cannot run its own output — stripping nix toolchain dirs"
+  PATH="$(printf %s "$PATH" | tr ':' '\n' | grep -v '/nix/store/' | paste -sd:)"
+  export PATH
+  hash -r 2>/dev/null || true
+  command -v cc >/dev/null 2>&1 || { echo "error: no working C compiler after nix strip — install build-essential" >&2; exit 1; }
+  smoke_cc || { echo "error: host cc also failed the smoke test" >&2; exit 1; }
+fi
 
 # ── 1. Bun (pinned; nixpkgs has only 1.3.x, so bootstrap by download) ─────────
 mkdir -p .devbin/bin
@@ -34,7 +62,18 @@ echo "bun $(bun --version)"
 say "bun install (frozen lockfile)"
 bun install --frozen-lockfile
 
-# ── 3. Rust semantic helper ──────────────────────────────────────────────────
+# ── 3. Rust toolchain (rustup + pinned rust-toolchain.toml) ──────────────────
+if ! command -v cargo >/dev/null 2>&1; then
+  say "installing rustup (toolchain ${RUST_VERSION} comes from rust/rust-toolchain.toml)"
+  curl -fsSL https://sh.rustup.rs -o /tmp/rustup-init.sh || { echo "error: rustup download failed" >&2; exit 1; }
+  sh /tmp/rustup-init.sh -y --profile minimal --default-toolchain "${RUST_VERSION}" --no-modify-path
+  rm -f /tmp/rustup-init.sh
+fi
+export PATH="$HOME/.cargo/bin:$PATH"
+command -v cargo >/dev/null 2>&1 || { echo "error: cargo not found after rustup step" >&2; exit 1; }
+echo "rustc $(rustc --version)"
+
+# ── 4. Rust semantic helper ──────────────────────────────────────────────────
 if [ -f rust/Cargo.toml ]; then
   say "building Rust helper (first build compiles llama.cpp; expect minutes)"
   (cd rust && cargo build --release -p gsterm-semantic)
@@ -44,7 +83,14 @@ else
   exit 1
 fi
 
-# ── 4. SolidLSP bridge (uv-managed Python) ───────────────────────────────────
+# ── 5. SolidLSP bridge (uv-managed Python) ───────────────────────────────────
+if ! command -v uv >/dev/null 2>&1; then
+  say "installing uv"
+  curl -LsSf https://astral.sh/uv/install.sh -o /tmp/uv-install.sh || { echo "error: uv download failed" >&2; exit 1; }
+  sh /tmp/uv-install.sh
+  rm -f /tmp/uv-install.sh
+  export PATH="$HOME/.local/bin:$PATH"
+fi
 if [ -f solidlsp/pyproject.toml ]; then
   say "syncing SolidLSP bridge environment (uv)"
   (cd solidlsp && uv sync)
@@ -55,5 +101,6 @@ fi
 
 say "bootstrap complete"
 echo "bun:        $(bun --version)"
+echo "rust:       $(rustc --version)"
 echo "helper:     $([ -x rust/artifacts/bin/gsterm-semantic ] && echo rust/artifacts/bin/gsterm-semantic || echo NOT-BUILT)"
 echo "solidlsp:   $([ -d solidlsp/.venv ] && echo .venv-ready || echo NOT-SYNCED)"

@@ -33,6 +33,9 @@
       ],
       "doctor": [
         "bun run src/doctor.ts --probe"
+      ],
+      "verify-release": [
+        "bash scripts/verify-all.sh --release"
       ]
     }
   }

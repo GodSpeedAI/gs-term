@@ -153,3 +153,25 @@ Baseline snapshot `8d46fb9`; the modeled-but-unavailable mechanisms (D-033/D-034
   rg (+ SolidLSP verification); natural language → concepts → structural scope → zvec-grep →
   rg snippet verification → SolidLSP; architecture/domain questions → concepts + structural scope
   and STOP; execution failures → evidence-first as before. Receipts record only stages that ran.
+
+## Phase 3.6 snapshot — semantic-coordinate hardening + clean-machine oracle
+
+Baseline `ee9e7a9`. Durable rule added and proved: **known semantic coordinates outrank symbol
+discovery** (coordinate > symbol lookup > textual declaration recovery).
+
+- Planner target resolution (`src/focus/search.ts`, `resolveSymbolTarget`): exact
+  `CodeSymbol` coordinates go straight to SolidLSP (`attention-coordinate` receipt stage);
+  partial coordinates refine file-locally (one-line read → document symbols;
+  `document-refinement` stage); name-only keeps the recovery chain
+  (`workspace-symbol-resolution` → `declaration-position-fallback` → `document-warmup`).
+  J9-A proves the negatives: zero workspaceSymbols and zero rg discovery calls on the
+  exact-coordinate contextual path (via receipt-stage provenance, no telemetry system).
+- Hardened rg declaration recovery (`declarationPattern`/`declarationColumn`): common JS/TS
+  declaration forms with modifiers (`default`/`abstract`/`async`), whitespace variation,
+  regex-escaped names, boundary-aware column refinement; bounded output; fallback only.
+- J9 journey now: A exact-coordinate (webmcp caller — the WebMCP path benefits with no
+  separate fast path), B name-only recovery, C partial coordinate; latency logged per leg.
+- Strict verification: `scripts/verify-all.sh --release` / `devbox run verify-release`
+  (node-free + `GSTERM_REQUIRE_SEMANTIC=1` semantic-skip discipline via
+  `test/support/semantic-gate.ts` + `doctor --require-semantic` + DomainForge projection
+  round-trip + no `GSTERM_SKIP_*`). Clean-machine CI: `.github/workflows/verify.yml`.

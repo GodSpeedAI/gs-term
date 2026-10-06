@@ -126,7 +126,12 @@ export async function collectReadiness(options: ReadinessOptions): Promise<Mecha
   } else {
     const bridge = new SolidLspBridge({ repoRoot: options.root, projectDir: mechanisms.solidlspProject });
     try {
-      const hello = await bridge.start();
+      await bridge.start();
+      // Deep mode starts the workspace for THIS repo so the TypeScript-server
+      // row reports provisioned truth, not a fresh-bridge default. Idempotent
+      // and warm after bootstrap; uses the same data dir the app/tests use.
+      await bridge.startWorkspace(options.root, resolve(options.root, ".gsterm", "solidlsp-data"));
+      const hello = await bridge.refresh();
       solidlsp = { name: "solidlsp", status: "ready", implementation: "python", version: hello.solidlsp, detail: solidlspProjectDir };
       typescriptServer = {
         name: "typescript-server",

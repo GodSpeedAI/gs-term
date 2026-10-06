@@ -88,6 +88,12 @@ export class SolidLspBridge {
     return this.hello!;
   }
 
+  /** Re-fetch capability info (e.g. after startWorkspace provisions resources). */
+  async refresh(): Promise<SolidLspHello> {
+    this.hello = (await this.process!.call("hello", {}, 30_000)) as SolidLspHello;
+    return this.hello;
+  }
+
   /**
    * Start (or keep) the language server for one workspace. `start` may take
    * minutes on a cold data dir (bun-driven provisioning) — bounded here.
