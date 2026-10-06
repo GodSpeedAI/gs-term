@@ -73,12 +73,27 @@ function importTargets(text: string): string[] {
   return out;
 }
 
+/** The narrow SolidLSP surface the structural enricher uses (SolidLspBridge satisfies this). */
+export interface StructuralLsp {
+  workspaceSymbols(query: string): Promise<readonly unknown[]>;
+  definition(file: string, line: number, column: number): Promise<readonly { readonly file: string; readonly start: { readonly line: number; readonly character: number } }[]>;
+  references(file: string, line: number, column: number): Promise<readonly { readonly file: string; readonly start: { readonly line: number; readonly character: number } }[]>;
+}
+
+const ENRICH_DEFINE_CAP = 40;
+const ENRICH_REFERENCE_CAP = 10;
+
 /**
  * The smallest deterministic structural graph that improves elimination: workspace → modules/tests,
  * import edges, and test→module edges. Graft-donor pattern (deterministic tier only): explicit
  * typed edges from evidence; no LLM summaries. Freshness is explicit.
+ *
+ * When a SolidLSP client is supplied, semantically verified edges are merged in (bounded): `defines`
+ * edges from definition-verified exported declarations, and file-level `references` edges from
+ * SolidLSP reference resolution. Edges the language server cannot establish are never invented —
+ * failures degrade to the base tier with `enriched: false`.
  */
-export async function buildStructuralMap(process: ProcessPort, root: string, worldId: string, workspace: string, revision?: string): Promise<StructuralMap> {
+export async function buildStructuralMap(process: ProcessPort, root: string, worldId: string, workspace: string, revision?: string, solidlsp?: StructuralLsp): Promise<StructuralMap> {
   const files = await rgFiles(process, root);
   const sourceFiles = files.filter((f) => /\.(ts|tsx|js|jsx)$/.test(f) && !f.includes("node_modules"));
   const nodes: StructuralNode[] = [
@@ -86,6 +101,7 @@ export async function buildStructuralMap(process: ProcessPort, root: string, wor
   ];
   const edges: StructuralEdge[] = [];
   const isTest = (f: string) => /\.(test|spec)\.[^.]+$/.test(f) || f.includes("__tests__");
+  const exportedCandidates: { file: string; line: number; name: string }[] = [];
   for (const file of sourceFiles.slice(0, MAX_FILES)) {
     const id = file;
     nodes.push({
@@ -93,17 +109,70 @@ export async function buildStructuralMap(process: ProcessPort, root: string, wor
       kind: isTest(file) ? "test" : "module",
       label: file.split("/").pop() ?? file,
     });
-    edges.push({ from: workspace, to: id, kind: "contains" });
+    edges.push({ from: workspace, to: id, kind: "contains", how: "file-topology" });
     const read = await run(process, root, ["sed", "-n", "1,240p", file]);
     if (read.code !== 0) continue;
     for (const target of importTargets(read.stdout)) {
       const base = file.includes("/") ? file.slice(0, file.lastIndexOf("/")) : "";
       const resolved = normalizeRelative(base, target);
-      if (resolved && sourceFiles.includes(resolved)) edges.push({ from: id, to: resolved, kind: "imports" });
-      if (resolved && isTest(file) && !isTest(resolved)) edges.push({ from: id, to: resolved, kind: "tests" });
+      if (resolved && sourceFiles.includes(resolved)) edges.push({ from: id, to: resolved, kind: "imports", how: "regex-import" });
+      if (resolved && isTest(file) && !isTest(resolved)) edges.push({ from: id, to: resolved, kind: "tests", how: "regex-import" });
+    }
+    // Exported declarations are the `defines` candidates for LSP verification.
+    if (solidlsp && !isTest(file) && exportedCandidates.length < ENRICH_DEFINE_CAP * 2) {
+      const lines = read.stdout.split("\n");
+      for (const [index, line] of lines.entries()) {
+        const declaration = /export\s+(?:async\s+)?(?:function|class|const|interface|type)\s+([A-Za-z_$][A-Za-z0-9_$]*)/.exec(line);
+        if (declaration?.[1]) {
+          exportedCandidates.push({ file, line: index + 1, name: declaration[1] });
+          if (exportedCandidates.length >= ENRICH_DEFINE_CAP * 2) break;
+        }
+      }
     }
   }
-  return { worldId, workspace, revision, status: "ready", nodes, edges, fileCount: files.length };
+
+  let enriched = false;
+  if (solidlsp) {
+    try {
+      const verified: { file: string; line: number; name: string; column: number }[] = [];
+      for (const candidate of exportedCandidates.slice(0, ENRICH_DEFINE_CAP)) {
+        const column = candidate.name.length > 0 ? await columnName(process, root, candidate.file, candidate.line, candidate.name) : 0;
+        if (column === undefined) continue;
+        // LSP is 0-based; the candidate is 1-based.
+        const definitions = await solidlsp.definition(candidate.file, candidate.line - 1, column).catch(() => []);
+        const hit = definitions.find((location) => location.file === candidate.file);
+        if (!hit) continue;
+        verified.push({ ...candidate, column });
+        nodes.push({
+          ref: { worldId, workspace, kind: "CodeSymbol", id: `${candidate.file}#${candidate.name}`, name: candidate.name, location: { path: candidate.file, line: candidate.line } },
+          kind: "symbol",
+          label: candidate.name,
+        });
+        edges.push({ from: candidate.file, to: `${candidate.file}#${candidate.name}`, kind: "defines", how: "solidlsp" });
+        enriched = true;
+      }
+      // File-level reference edges for the most-verified symbols.
+      for (const symbol of verified.slice(0, ENRICH_REFERENCE_CAP)) {
+        const references = await solidlsp.references(symbol.file, symbol.line - 1, symbol.column).catch(() => []);
+        for (const reference of references) {
+          if (reference.file === symbol.file) continue;
+          edges.push({ from: reference.file, to: symbol.file, kind: "references", how: "solidlsp" });
+          enriched = true;
+        }
+      }
+    } catch {
+      // Degrade to the base tier; enriched stays false.
+    }
+  }
+
+  return { worldId, workspace, revision, status: "ready", nodes, edges, fileCount: files.length, ...(enriched ? { enriched: true } : {}) };
+}
+
+/** Column (0-based) of the declaration name on its line, read from the world. */
+async function columnName(process: ProcessPort, root: string, file: string, line: number, name: string): Promise<number | undefined> {
+  const read = await run(process, root, ["sed", "-n", `${line}p`, file]);
+  if (read.code !== 0) return undefined;
+  return read.stdout.indexOf(name) >= 0 ? read.stdout.indexOf(name) : undefined;
 }
 
 function normalizeRelative(base: string, target: string): string | undefined {
@@ -122,10 +191,16 @@ function normalizeRelative(base: string, target: string): string | undefined {
 
 /**
  * Honest per-world mechanism availability. rg is detected through the world's process port (so a
- * remote world reports remote rg). SolidLSP / zvec-grep / zvec are mounted mechanisms — reported
- * truthfully, never silently substituted with local search.
+ * remote world reports remote rg). Substrate mechanisms (solidlsp / zvec-grep / zvec) report
+ * readiness only when the managed client for THIS world probed successfully — a remote world
+ * receives no substrate client and reports "not mounted", never a silent local substitution.
  */
-export async function resolveAvailability(process: ProcessPort, root: string, mounted: ReadonlySet<string>): Promise<MechanismAvailability[]> {
+export async function resolveAvailability(
+  process: ProcessPort,
+  root: string,
+  mounted: ReadonlySet<string>,
+  clients: { readonly helper?: unknown; readonly solidlsp?: unknown } = {},
+): Promise<MechanismAvailability[]> {
   let rgReady = false;
   try {
     const probe = await run(process, root, ["rg", "--version"]);
@@ -137,11 +212,15 @@ export async function resolveAvailability(process: ProcessPort, root: string, mo
     mounted.has(name)
       ? { name, status: "ready", freshness: "current" }
       : { name, status: "unavailable", reason: `not mounted in world (no managed ${name} process)` };
+  const substrateReady = (name: "solidlsp" | "zvec-grep" | "zvec", present: boolean): MechanismAvailability =>
+    present
+      ? { name, status: "ready", freshness: "current" }
+      : { name, status: "unavailable", reason: `not mounted for this world (managed ${name} client absent or start failed)` };
   return [
     { name: "rg", status: rgReady ? "ready" : "unavailable", freshness: rgReady ? "current" : undefined, reason: rgReady ? undefined : "ripgrep not found in world" },
     avail("structural-map"),
-    avail("solidlsp"),
-    avail("zvec-grep"),
-    avail("zvec"),
+    substrateReady("solidlsp", clients.solidlsp !== undefined),
+    substrateReady("zvec-grep", clients.helper !== undefined),
+    substrateReady("zvec", clients.helper !== undefined),
   ];
 }

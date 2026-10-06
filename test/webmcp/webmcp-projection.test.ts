@@ -68,6 +68,10 @@ function fakeInvoker(): ToolInvoker & { calls: { argv: readonly string[]; source
       calls.push({ argv: ["focus.propose", args.sourceAgent], source });
       return { candidate: { id: "cand", proposedEntity: args.proposedEntity }, sharedFocusChanged: false } as unknown as Json;
     },
+    async codeOperation(args, source) {
+      calls.push({ argv: [`code.${args.op}`, args.file], source, ...(args.worldId === undefined ? {} : { worldId: args.worldId }) });
+      return { locations: [] } as unknown as Json;
+    },
   };
 }
 
@@ -86,9 +90,9 @@ describe("WebMCP projection (J2-W)", () => {
     const { context, tools } = fakeContext();
     const invoker = fakeInvoker();
     const result = await projectCapabilitiesToWebMCP(context, invoker);
-    expect([...result.registered].sort()).toEqual(["execute_command", "focus_inspect", "focus_propose_candidate", "focus_search", "get_world_state"]);
+    expect([...result.registered].sort()).toEqual(["code_definition", "code_diagnostics", "code_references", "execute_command", "focus_inspect", "focus_propose_candidate", "focus_search", "get_world_state"]);
     expect(result.failed).toEqual([]);
-    expect(tools.length).toBe(5);
+    expect(tools.length).toBe(8);
 
     const executed = JSON.parse((await context.executeTool!(tools[0]!, JSON.stringify({ argv: ["touch", "x.txt"] }))) as string) as { content: { text: string }[] };
     expect(executed.content[0]!.text).toContain("exec_test");

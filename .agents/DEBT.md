@@ -302,23 +302,35 @@ Owners: `gs-term` · `Cognate` · `DomainForge` · `Bun` · `unresolved`.
 ## Phase 3 (Focus Engine / Syntelligent Search) debt
 
 ### D-033 SolidLSP not mounted (language semantics)
-- **Current behavior:** `solidlsp` reported `unavailable` per world; search degrades to rg +
-  structural map. The managed-bridge seam (startup/readiness/workspace-assign/shutdown) is in
-  `resolveAvailability`/`MechanismName`. · **Reconsider:** when the MIT `src/solidlsp` portion is
-  mounted behind the managed bridge (TypeScript first). · **Owner:** gs-term · **Status:** `watch`
+- **Resolution (Phase 3.5):** mounted for real. `solidlsp/src/gsterm_solidlsp/bridge.py` hosts
+  SolidLSP from PyPI **`serena-agent==1.7.0`** (uv-locked, MIT — audited: upstream main later
+  relicensed the Serena application GPL; SolidLSP-at-1.7.0 is the clean distribution) behind the
+  managed stdio JSON-lines seam. The TypeScript language server (typescript-language-server 5.1.3
+  + tsserver 5.9.3) is provisioned by bun and runs **under Bun 1.4.x** via a node→bun PATH shim —
+  byte-identical LSP behavior vs Node was verified before choosing this path. Lifecycle:
+  start/ready/restart/dispose with process-tree cleanup (selftest-proven, no orphans). Planning
+  note: tsserver `workspace/symbol` (navto) needs loaded projects; the planner warms the declaring
+  file before reference resolution. · **Owner:** gs-term · **Status:** `resolved`
 
 ### D-034 zvec-grep / zvec not mounted (hybrid semantic retrieval)
-- **Current behavior:** `zvec-grep` (preview) and `zvec` (Node native addon, Bun-compat unproven)
-  reported `unavailable`; the planner uses the local `potion-code-16m-v2` path when mounted. Raw
-  `zvec` is deliberately NOT a second source index (its justified role is Focus/structural concept
-  retrieval, deferred). Availability + freshness are modeled; no duplicate index built. · **Owner:**
-  gs-term · **Status:** `watch` (pin tested versions when mounted)
+- **Resolution (Phase 3.5):** mounted as ONE managed Rust helper (`rust/crates/gsterm-semantic`,
+  stdio JSON-lines) hosting the zvec-grep **engine** (`zg-engine` cargo git dep @ `28ef200`,
+  Apache-2.0 — the upstream Rust rewrite is 0.0.1/unpublished; git dep verified resolvable) and a
+  **zvec concept collection** (`zvec-rust` 0.7.2) over gs-term's curated concept objects
+  (`src/semantic/concepts.ts`, digest-marked store; embeddings are retrieval-only, explicit links
+  stay authoritative). `local/potion-code-16m-v2` (dim 256, sha256-pinned) is shared with the
+  engine cache; the concept embedder ports the engine's exact mean-pool math. Scores are cosine
+  DISTANCES. zvec collections are single-writer (exclusive LOCK) — one helper process owns a
+  store; never open it elsewhere. Transitive pin: `llama-cpp-2 ==0.1.154` (zg-engine breaks
+  against >= 0.1.155). · **Owner:** gs-term · **Status:** `resolved`
 
 ### D-035 Structural map is a minimal deterministic tier
-- **Current behavior:** `src/focus/mechanisms.ts` builds workspace→module/test + import/test edges
-  from `rg --files` + regex import extraction (Graft-donor deterministic pattern: typed edges,
-  `contains` hierarchy-only, explicit freshness; no LLM summaries). Not every AST node is modeled.
-  · **Owner:** gs-term · **Status:** `accepted`
+- **Update (Phase 3.5):** the base tier is unchanged (deterministic, provenance-tagged
+  `file-topology`/`regex-import`), and a bounded **SolidLSP enrichment tier** was added:
+  definition-verified `defines` edges and file-level `references` edges with `how:"solidlsp"`
+  (caps: 40 defines / 10 reference sweeps; failures degrade to the base tier with
+  `enriched:false`). No relationships the language server cannot establish are invented; call
+  hierarchy stays out (unsupported for TS). · **Owner:** gs-term · **Status:** `accepted`
 
 ### D-036 Ambiguous referent limits
 - **Current behavior:** referent resolution is a fixed precedence; when several near-precedence
@@ -344,6 +356,40 @@ Owners: `gs-term` · `Cognate` · `DomainForge` · `Bun` · `unresolved`.
   `(worldId, workspace, id)` entity identity; no global singleton. Session A→local→Focus A /
   Session B→ssh→Focus B is possible without redesign. Not implemented (Phase 3 scope). · **Owner:**
   gs-term · **Status:** `accepted`
+
+## Phase 3.5 new debt
+
+### D-040 Devbox nix toolchain cannot build the Rust helper on this host
+- **Current behavior:** the devbox shell's nix gcc 16.2 wrapper produces build-script binaries
+  that SIGSEGV under this WSL2 kernel (proc-macro2/quote/ort-sys build scripts crash);
+  `export CC/CXX` from the gcc-wrapper is unset in `devbox.json`'s init_hook so builds use the
+  rustup-managed 1.98.0 toolchain with the host linker. Devbox still provides python/uv/rg/git/ssh
+  deterministically; the Rust toolchain comes from rustup (`rust-toolchain.toml` pin).
+- **Why debt:** the "clean machine" story currently assumes a working host C toolchain for the
+  Rust half; a fresh-machine proof of the FULL build needs either a fixed nixpkgs gcc or
+  CI (GitHub Actions runner) to be the oracle. The full gate DID pass node-free on this host with
+  the pinned bun bootstrap + host rustup.
+- **Evidence:** `devbox run bootstrap` segfault logs (2026-10-05); `scripts/README.md` notes.
+- **Reconsider:** first CI run, or when nixpkgs gcc/glibc updates land. · **Owner:** gs-term ·
+  **Status:** `watch`
+
+### D-041 SolidLSP workspace/symbol (navto) needs loaded projects on tsserver
+- **Current behavior:** on a freshly started workspace, tsserver answers navto with
+  `No Project` / empty until files are opened; the planner therefore warms the declaring file
+  (document symbols) before reference resolution and falls back to an rg **position finder**
+  (declaration pattern) when the workspace search is empty — the semantic answer itself still
+  comes from SolidLSP references (J9 proof: 13 references incl. the true caller).
+- **Reconsider:** if solidlsp gains an explicit "load project" API or tsserver navto behavior
+  changes. · **Owner:** gs-term (planner) · **Status:** `watch`
+
+### D-042 Node appears on dev PATHs; the shim boundary must stay explicit
+- **Current behavior:** Bun executes typescript-language-server (a Node program) through a
+  `node→bun` shim; SolidLSP's `which("node")`/`which("npm")` asserts are satisfied by that shim
+  and an npm→bun translator. This is proven-safe (byte-identical LSP results, Node absent from
+  PATH in the selftest and the node-free gate) but remains a compatibility surface to re-verify
+  when Bun or typescript-language-server upgrades. · **Reconsider:** each Bun/TSL upgrades;
+  long-term via a native Rust LSP client (see plan's elimination note). · **Owner:** gs-term ·
+  **Status:** `watch`
 
 ## Deferred architectural seams (not debt — intentionally un-built)
 

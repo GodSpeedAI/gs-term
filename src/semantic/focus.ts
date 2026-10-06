@@ -134,7 +134,9 @@ export interface StructuralNode {
 export interface StructuralEdge {
   readonly from: string;
   readonly to: string;
-  readonly kind: "imports" | "defines" | "tests" | "calls" | "contains";
+  readonly kind: "imports" | "defines" | "tests" | "calls" | "contains" | "references";
+  /** Evidence provenance: how this edge was established (never inferred beyond it). */
+  readonly how?: "solidlsp" | "regex-import" | "file-topology";
 }
 
 export interface StructuralMap {
@@ -145,6 +147,8 @@ export interface StructuralMap {
   readonly nodes: readonly StructuralNode[];
   readonly edges: readonly StructuralEdge[];
   readonly fileCount: number;
+  /** True when SolidLSP-verified edges were merged into the base tier. */
+  readonly enriched?: boolean;
 }
 
 // ── Search results + receipt (bounded; provenance-preserving) ─────────────────
@@ -160,7 +164,7 @@ export interface SearchResult {
   readonly affordances: readonly Affordance[];
 }
 
-export type SearchIntent = "what-is-this" | "why-did-this-fail" | "who-calls-this" | "related-tests" | "changed-recently" | "what-opened-this-port" | "semantic" | "reconnect";
+export type SearchIntent = "what-is-this" | "why-did-this-fail" | "who-calls-this" | "related-tests" | "changed-recently" | "what-opened-this-port" | "semantic" | "reconnect" | "architecture";
 
 /** The inspectable reduction funnel + receipt for one Syntelligent Search invocation. */
 export interface SearchReceipt {

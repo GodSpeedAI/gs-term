@@ -5,6 +5,7 @@ import type { CapabilityContract, SemanticRef } from "@cognate/kernel-api";
 import { EXECUTION_CAPABILITY_VERSION, PROCESS_CAPABILITY } from "@cognate/execution";
 import { WORLD_SNAPSHOT_CAPABILITY, WORLD_SNAPSHOT_VERSION } from "../components/observers.ts";
 import { FOCUS_SEARCH_CAPABILITY, FOCUS_SEARCH_VERSION } from "../components/focus.ts";
+import { CODE_CAPABILITIES } from "../components/code.ts";
 
 export interface SemanticModel {
   readonly projection: SemanticProjection;
@@ -13,19 +14,23 @@ export interface SemanticModel {
   readonly executionSemanticRef: SemanticRef | undefined;
   readonly evidenceSemanticRef: SemanticRef | undefined;
   readonly focusSemanticRef: SemanticRef | undefined;
+  readonly codeSemanticRef: SemanticRef | undefined;
+  readonly diagnosticSemanticRef: SemanticRef | undefined;
 }
 
 /** Semantic ids verified against the projection round-trip (see .sea/interaction/handoff.md). */
 export const SEMANTIC_ID_EXECUTION = "controlplane::Execution";
 export const SEMANTIC_ID_EVIDENCE = "controlplane::Evidence";
 export const SEMANTIC_ID_FOCUS = "controlplane::Syntelligent Search";
+export const SEMANTIC_ID_CODE_SYMBOL = "controlplane::Code Symbol";
+export const SEMANTIC_ID_DIAGNOSTIC = "controlplane::Diagnostic";
 
 export function loadGsTermModel(source: string, uri: string): SemanticModel {
   const result = loadSemanticProjection(source, { uri });
   if (!result.ok) throw new Error(`failed to parse domain model ${uri}: ${JSON.stringify(result.error)}`);
   const projection = result.projection;
 
-  const required = new Set([SEMANTIC_ID_EXECUTION, SEMANTIC_ID_EVIDENCE]);
+  const required = new Set([SEMANTIC_ID_EXECUTION, SEMANTIC_ID_EVIDENCE, SEMANTIC_ID_CODE_SYMBOL, SEMANTIC_ID_DIAGNOSTIC]);
   const present = new Set(projection.objects.map((object) => object.ref.id));
   for (const id of required) {
     if (!present.has(id)) throw new Error(`domain model ${uri} is missing required semantic object ${id}`);
@@ -35,6 +40,10 @@ export function loadGsTermModel(source: string, uri: string): SemanticModel {
     { semanticId: SEMANTIC_ID_EXECUTION, capability: { id: PROCESS_CAPABILITY, version: EXECUTION_CAPABILITY_VERSION } },
     { semanticId: SEMANTIC_ID_EVIDENCE, capability: { id: WORLD_SNAPSHOT_CAPABILITY, version: WORLD_SNAPSHOT_VERSION } },
     { semanticId: SEMANTIC_ID_FOCUS, capability: { id: FOCUS_SEARCH_CAPABILITY, version: FOCUS_SEARCH_VERSION } },
+    { semanticId: SEMANTIC_ID_CODE_SYMBOL, capability: { id: CODE_CAPABILITIES.definition.id, version: CODE_CAPABILITIES.definition.version } },
+    { semanticId: SEMANTIC_ID_CODE_SYMBOL, capability: { id: CODE_CAPABILITIES.references.id, version: CODE_CAPABILITIES.references.version } },
+    { semanticId: SEMANTIC_ID_CODE_SYMBOL, capability: { id: CODE_CAPABILITIES.implementations.id, version: CODE_CAPABILITIES.implementations.version } },
+    { semanticId: SEMANTIC_ID_DIAGNOSTIC, capability: { id: CODE_CAPABILITIES.diagnostics.id, version: CODE_CAPABILITIES.diagnostics.version } },
   ];
   const contracts = bindCapabilities(projection, bindings);
   const byCapability = new Map(contracts.map((contract) => [contract.id, contract]));
@@ -46,5 +55,7 @@ export function loadGsTermModel(source: string, uri: string): SemanticModel {
     executionSemanticRef: byCapability.get(PROCESS_CAPABILITY)?.semanticRef,
     evidenceSemanticRef: byCapability.get(WORLD_SNAPSHOT_CAPABILITY)?.semanticRef,
     focusSemanticRef: byCapability.get(FOCUS_SEARCH_CAPABILITY)?.semanticRef,
+    codeSemanticRef: byCapability.get(CODE_CAPABILITIES.references.id)?.semanticRef,
+    diagnosticSemanticRef: byCapability.get(CODE_CAPABILITIES.diagnostics.id)?.semanticRef,
   };
 }

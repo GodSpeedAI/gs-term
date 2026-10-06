@@ -61,6 +61,9 @@ export function createUiInvoker(client: CognateClientLike, options: UiInvokerOpt
     async focusProposeCandidate(args, source): Promise<Json> {
       return runFocus(client, options, "propose", { proposedEntity: args.proposedEntity, reason: args.reason, evidence: args.evidence ?? [], sourceAgent: args.sourceAgent, candidateId: crypto.randomUUID(), evidenceToken: crypto.randomUUID() }, source);
     },
+    async codeOperation(args, source): Promise<Json> {
+      return runFocus(client, options, "code", { op: args.op, file: args.file, line: args.line, column: args.column, includeDeclaration: args.includeDeclaration === true, worldId: args.worldId ?? options.worldId }, source);
+    },
   };
 }
 

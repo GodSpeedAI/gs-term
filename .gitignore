@@ -4,3 +4,17 @@ node_modules/
 .cognate/dist
 playwright-report/
 test-results/
+
+# Rust mechanism workspace artifacts
+rust/target/
+rust/artifacts/
+# Local semantic substrate data (indexes, concept store, solidlsp resources)
+.gsterm/
+.zvec-grep/
+# SolidLSP uv project virtualenv
+solidlsp/.venv/
+# Devbox-bootstrapped pinned bun
+.devbin/
+.devbox/
+__pycache__/
+*.pyc

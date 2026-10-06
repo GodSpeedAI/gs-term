@@ -1,0 +1,39 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.17.5/.schema/devbox.schema.json",
+  "name": "gs-term",
+  "description": "Reproducible development toolchain for gs-term (Bun app + Rust semantic helper + SolidLSP bridge). Devbox is the reproducibility oracle, NOT a product requirement.",
+  "packages": [
+    "python@3.12",
+    "uv@latest",
+    "ripgrep@latest",
+    "git@latest",
+    "openssh@latest",
+    "cmake@latest",
+    "gcc@latest",
+    "libclang@latest"
+  ],
+  "env": {
+    "BUN_VERSION": "1.4.2",
+    "CARGO_TARGET_DIR": "$PWD/rust/target"
+  },
+  "shell": {
+    "init_hook": [
+      "unset CC CXX CC_FOR_TARGET CXX_FOR_TARGET AR AS LD READELF NM STRIP RANLIB || true",
+      "unset RUSTUP_HOME || true",
+      "export PATH=\"$PWD/.devbin/bin:$HOME/.cargo/bin:$PATH\"",
+      "[ -x \"$PWD/.devbin/bin/bun\" ] || echo 'bun not bootstrapped yet \u2014 run: devbox run bootstrap'",
+      "command -v cargo >/dev/null || echo 'cargo not found \u2014 rustup-managed Rust 1.98.0 required (see scripts/README.md)'"
+    ],
+    "scripts": {
+      "bootstrap": [
+        "bash scripts/bootstrap.sh"
+      ],
+      "verify": [
+        "bash scripts/verify-all.sh --node-free"
+      ],
+      "doctor": [
+        "bun run src/doctor.ts --probe"
+      ]
+    }
+  }
+}

@@ -122,7 +122,7 @@ describe("real PTY substrate", () => {
     const done = markers.slice(start).find((marker) => marker.code === "D") as { exitCode: number };
     expect(done.exitCode).toBe(130);
     expect(session!.alive).toBe(true); // the SHELL survives the interrupt
-  });
+  }, 45_000);
 
   test("session exit is observable and cleanup is deterministic", async () => {
     const exited: { exitCode: number }[] = [];

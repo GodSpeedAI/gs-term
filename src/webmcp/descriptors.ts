@@ -22,6 +22,8 @@ export interface ToolInvoker {
   focusInspect(source: "ui" | "webmcp"): Promise<Json>;
   /** Propose a FocusCandidate (SharedFocus unchanged until a human accepts/pins). */
   focusProposeCandidate(args: { readonly proposedEntity: Record<string, unknown>; readonly reason: string; readonly evidence?: unknown[]; readonly sourceAgent: string }, source: "ui" | "webmcp"): Promise<Json>;
+  /** Precise code semantics (definition/references/implementations/diagnostics) via code.* capabilities. */
+  codeOperation(args: { readonly op: "definition" | "references" | "implementations" | "diagnostics"; readonly file: string; readonly line: number; readonly column: number; readonly includeDeclaration?: boolean; readonly worldId?: string }, source: "ui" | "webmcp"): Promise<Json>;
 }
 
 export interface ToolDescriptor {
@@ -116,6 +118,68 @@ export const CAPABILITY_DESCRIPTORS: readonly ToolDescriptor[] = [
       const proposedEntity = args.proposedEntity as Record<string, unknown> | undefined;
       if (!proposedEntity || typeof proposedEntity.id !== "string") return toContent({ error: "proposedEntity must be an EntityRef" });
       return toContent(await invoker.focusProposeCandidate({ proposedEntity, reason: String(args.reason ?? ""), evidence: (args.evidence as unknown[]) ?? [], sourceAgent: String(args.sourceAgent ?? "agent.focus") }, "webmcp"));
+    },
+  },
+  {
+    name: "code_references",
+    description:
+      "Semantic references of a symbol (who calls this?): language-server references, not text matching. Positions are 1-based. Unavailable for remote worlds and when language intelligence is not mounted — use focus_search then.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        file: { type: "string", description: "Workspace-relative file containing the symbol" },
+        line: { type: "number", description: "1-based line of the symbol" },
+        column: { type: "number", description: "1-based column of the symbol" },
+        includeDeclaration: { type: "boolean", description: "Include the declaration site (default false)" },
+        worldId: { type: "string", description: "Execution world (default: the configured default world)" },
+      },
+      required: ["file", "line", "column"],
+    },
+    invoke: async (invoker, args) => {
+      if (typeof args.file !== "string" || typeof args.line !== "number" || typeof args.column !== "number") {
+        return toContent({ error: "file (string), line and column (1-based numbers) are required" });
+      }
+      return toContent(await invoker.codeOperation({ op: "references", file: args.file, line: args.line, column: args.column, includeDeclaration: args.includeDeclaration === true, ...(typeof args.worldId === "string" ? { worldId: args.worldId } : {}) }, "webmcp"));
+    },
+  },
+  {
+    name: "code_definition",
+    description: "Semantic definition of a symbol: where it is declared (language-server definition, 1-based positions).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        file: { type: "string", description: "Workspace-relative file containing the symbol" },
+        line: { type: "number", description: "1-based line" },
+        column: { type: "number", description: "1-based column" },
+        worldId: { type: "string", description: "Execution world (default: the configured default world)" },
+      },
+      required: ["file", "line", "column"],
+    },
+    invoke: async (invoker, args) => {
+      if (typeof args.file !== "string" || typeof args.line !== "number" || typeof args.column !== "number") {
+        return toContent({ error: "file (string), line and column (1-based numbers) are required" });
+      }
+      return toContent(await invoker.codeOperation({ op: "definition", file: args.file, line: args.line, column: args.column, ...(typeof args.worldId === "string" ? { worldId: args.worldId } : {}) }, "webmcp"));
+    },
+  },
+  {
+    name: "code_diagnostics",
+    description: "Language-server diagnostics for one file (errors/warnings with 1-based ranges).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        file: { type: "string", description: "Workspace-relative file" },
+        line: { type: "number", description: "1-based line anchor (any position in the file)" },
+        column: { type: "number", description: "1-based column anchor" },
+        worldId: { type: "string", description: "Execution world (default: the configured default world)" },
+      },
+      required: ["file", "line", "column"],
+    },
+    invoke: async (invoker, args) => {
+      if (typeof args.file !== "string" || typeof args.line !== "number" || typeof args.column !== "number") {
+        return toContent({ error: "file (string), line and column (1-based numbers) are required" });
+      }
+      return toContent(await invoker.codeOperation({ op: "diagnostics", file: args.file, line: args.line, column: args.column, ...(typeof args.worldId === "string" ? { worldId: args.worldId } : {}) }, "webmcp"));
     },
   },
 ];

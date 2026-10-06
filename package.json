@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "e2e": "playwright test",
     "verify": "bun run typecheck && bun run lint && bun run test && bun run e2e",
+    "doctor": "bun run src/doctor.ts",
     "lint": "oxlint --type-aware src test"
   },
   "dependencies": {

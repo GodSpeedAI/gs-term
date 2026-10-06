@@ -38,3 +38,13 @@ timeout_ms = 30000
 # host_key_fingerprints = ["SHA256:..."]   # pin the host key (required) ...
 # host_keys_file = "~/.ssh/known_hosts"    # ... and/or a known_hosts file
 # default_timeout_ms = 30000
+
+# Native semantic substrate — zvec-grep/zvec Rust helper + SolidLSP Python bridge.
+# Mounted for the LOCAL world only; remote worlds report these mechanisms honestly
+# unavailable (never silently substituted with local results).
+# [mechanisms]
+# enabled = true                        # mount the substrate when its pieces are ready
+# helper_binary = ""                    # explicit path; empty = discover (rust/artifacts, then rust/target/release)
+# solidlsp_project = "solidlsp"         # uv project dir of the SolidLSP bridge (repo-relative)
+# model = "local/potion-code-16m-v2"    # local embedding model (zvec-grep catalog reference)
+# data_dir = ""                         # indexes/concept store/LS resources; empty = <root>/.gsterm

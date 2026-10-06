@@ -1,0 +1,35 @@
+[package]
+name = "gsterm-semantic"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98"
+license = "Apache-2.0"
+publish = false
+description = "gs-term native semantic helper: zvec-grep retrieval, concept collection, model2vec embeddings over stdio JSON-lines"
+
+[dependencies]
+zg-engine = { git = "https://github.com/zvec-ai/zvec-grep", rev = "28ef2009838e509bdbeb43d06e04d0cf98e0b071" }
+zvec-rust = "=0.7.2"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.143"
+tokio = { version = "1.47.1", features = ["rt-multi-thread", "macros"] }
+sha2 = "0.11.0"
+ureq = { version = "3.1.4", default-features = false, features = ["rustls"] }
+safetensors = "=0.7.0"
+tokenizers = { version = "0.23.1", default-features = false, features = ["fancy-regex"] }
+half = "2.7.1"
+thiserror = "2.0.16"
+hex = "0.4.3"
+# Transitive constraint: zg-engine's llama.cpp backend breaks against
+# llama-cpp-2 >= 0.1.155 (AddBos moved); pin to upstream's locked 0.1.154.
+llama-cpp-2 = "=0.1.154"
+llama-cpp-sys-2 = "=0.1.154"
+
+[build-dependencies]
+zvec-rust-build = "=0.7.2"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[lints.rust]
+unsafe_code = "forbid"

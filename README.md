@@ -33,10 +33,16 @@ observation scope; durable state lives in `.cognate/app.sqlite` (git-ignored).
 
 ```bash
 bun run typecheck   # tsc --noEmit
-bun run test        # unit + journey + conformance + architecture (38 tests)
-bun run e2e         # Playwright acceptance sequence A–G (chromium)
-bun run verify      # all three
+bun run test        # unit + journey + conformance + architecture (126 tests)
+bun run e2e         # Playwright acceptance sequence A–G + Phase 2/3 (chromium)
+bun run doctor      # mechanism readiness (add --probe to start managed processes)
+bash scripts/verify-all.sh [--node-free]  # the full gate + optional Node-free proof
+bun run verify      # typecheck + lint + test + e2e
 ```
+
+With the full toolchain, `devbox run bootstrap` provisions everything (pinned bun 1.4.x,
+Rust 1.98.0 helper, SolidLSP uv env) and `devbox run verify` runs the same gates node-free.
+Devbox is the reproducibility oracle, NOT a product requirement.
 
 Journey tests are named after the catalog ids (`test/journeys/journey-j<N>-…`). The E2E suite
 drives the real browser, real server, real PTY: typed commands settle with effects + evidence,
@@ -164,8 +170,23 @@ user goal + human attention + accepted SharedFocus + current world + observed re
   reported truthfully (D-010 honesty).
 - **Structural map** = the minimal deterministic graph (Graft-donor tier): typed edges from evidence,
   `contains` for hierarchy, explicit freshness — no LLM summaries.
-- **Mechanisms**: `rg` (exact, real); `structural-map` (derived); `solidlsp` / `zvec-grep` / `zvec`
-  are mounted-mechanism seams reported `unavailable` until their managed processes exist.
+- **Mechanisms (Phase 3.5 — mounted for real)**: `rg` (exact, real); `structural-map`
+  (deterministic, now SolidLSP-enriched with `defines`/`references` provenance); a **Rust helper**
+  (`rust/crates/gsterm-semantic`) hosting the **zvec-grep engine** (hybrid FTS+vector source
+  retrieval, `local/potion-code-16m-v2` embeddings), a **zvec concept store** (gs-term's own
+  concept objects — never source chunks; explicit links stay authoritative), and **SolidLSP**
+  (the MIT `serena-agent==1.7.0` package under uv; typescript-language-server runs ON BUN via a
+  node→bun shim — no Node in the runtime graph). Remote worlds report these honestly unavailable;
+  local results are never silently substituted.
+- **Routing is reduction**: known symbol → SolidLSP directly; exact identifier → rg; natural
+  language → concepts → structural scope → zvec-grep → snippet verification → SolidLSP;
+  architecture/domain questions → concepts + scope and STOP. Receipts record only stages that ran.
+- **Precise code capabilities** (`code.definition/references/implementations/diagnostics`) are
+  Cognate capabilities bound to `controlplane::Code Symbol`/`Diagnostic`, projected to WebMCP
+  (`code_references`, `code_definition`, `code_diagnostics`) through the same descriptors.
+- **`gs-term doctor`** reports honest per-mechanism readiness (Bun, PTY, rg, zvec-grep Rust,
+  zvec, Potion model, SolidLSP, Python/uv, TypeScript server, SSH) and ends with
+  `Node: not required` — an architectural statement, enforced by `scripts/verify-all.sh --node-free`.
 - **WebMCP** projects the same Focus Engine (`focus_search`, `focus_inspect`,
   `focus_propose_candidate`); human resolution is deliberately NOT a WebMCP tool (the agent cannot
   self-accept).
@@ -223,5 +244,9 @@ Recon used shallow clones under `.tmp/donors/` (removed after extraction):
 `WebMCP-org/npm-packages` (current WebMCP API + polyfill package), `compoundingtech/pty`
 (session/detach model, conformance-suite testing philosophy), `xtermjs/xterm.js` (addon
 surface), `ripulio/web-mcp` (stale-API counterexample), `kilian-ai/linuxontab` and
-`cloudflare/sandbox-sdk` (provider-boundary shape only).
+`cloudflare/sandbox-sdk` (provider-boundary shape only). Phase 3.5 recon used
+`zvec-ai/zvec-grep` @ `28ef200` (engine API + model2vec port; the engine itself is a pinned
+cargo **git dependency**, not a fork) and the PyPI `serena-agent==1.7.0` metadata (license
+audit: fully MIT at that exact release; upstream main later relicensed the Serena app to GPL —
+do not track main).
 

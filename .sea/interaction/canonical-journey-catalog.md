@@ -192,8 +192,10 @@ Any implementation of a deferred journey must first be added to this catalog (sk
   Settlement: a bounded `SearchResult` + a `SearchReceipt` (reduction funnel + provenance).
 - **J8 `/ why did this fail?`** — evidence-first: the focused failed execution's effects/observations
   are inspected before any broad source search; only then bounded code retrieval.
-- **J9 `/ who calls this?`** — semantic references for the focused symbol (exact rg first; LSP when
-  mounted).
+- **J9 `/ who calls this?`** — semantic references for the focused symbol (Phase 3.5: SolidLSP
+  references are the PRIMARY answer when the language mechanism is mounted; rg is the stated
+  fallback and says semantic verification is unavailable. Precise capabilities `code.definition` /
+  `code.references` / `code.implementations` / `code.diagnostics` project the same mechanism).
 - **J10 semantic search (unknown concept)** — structural map narrows, then hybrid/exact retrieval;
   bounded result set; unavailable mechanisms reported truthfully.
 - **J11 agent focus proposal** — agent derives and proposes a `FocusCandidate` (action). SharedFocus

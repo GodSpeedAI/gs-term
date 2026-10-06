@@ -14,6 +14,10 @@ const GRANTED_CAPABILITIES = new Set([
   "process.exec", // J2 structured execution (Cognate @cognate/execution)
   "world.snapshot", // J1/J2/J3 evidence gathering
   "focus.search", // J7–J10 Syntelligent Search (deterministic planner)
+  "code.definition", // J9 precise code semantics (SolidLSP-backed)
+  "code.references", // J9
+  "code.implementations", // J9
+  "code.diagnostics", // J8/J9
 ]);
 
 const POLICY_ID = "gsterm-machine-authority-is-explicit";

@@ -17,7 +17,7 @@ export interface FocusAgentOptions {
   readonly workspace: string;
 }
 
-type Intent = "search" | "propose" | "accept" | "pin" | "reject" | "inspect";
+type Intent = "search" | "propose" | "accept" | "pin" | "reject" | "inspect" | "code";
 
 function parse(raw: unknown): Record<string, unknown> {
   if (typeof raw !== "object" || raw === null) throw new Error("invalid input: expected an object");
@@ -57,6 +57,24 @@ export function focusAgent(options: FocusAgentOptions): AgentDefinition {
         }));
         const receipt = (outcome as { receipt?: { id?: string } }).receipt;
         await ctx.emit("focus.search.completed", json({ sessionId, worldId, query: input.query, receiptId: receipt?.id ?? null }));
+        return json(outcome);
+      }
+
+      if (intent === "code") {
+        // ACTION: invoke a precise code capability (definition/references/
+        // implementations/diagnostics) through policy-checked invocation. The
+        // mechanism (SolidLSP) stays behind the capability contract.
+        const op = str(input.op, "op");
+        const capability = op === "definition" || op === "references" || op === "implementations" || op === "diagnostics" ? `code.${op}` : null;
+        if (!capability) throw new Error(`invalid input: op must be definition|references|implementations|diagnostics`);
+        const outcome = await ctx.invoke(capability, json({
+          worldId,
+          file: str(input.file, "file"),
+          line: input.line,
+          column: input.column,
+          ...(input.includeDeclaration === true ? { includeDeclaration: true } : {}),
+        }));
+        await ctx.emit("focus.code.completed", json({ sessionId, worldId, op, file: input.file }));
         return json(outcome);
       }
 

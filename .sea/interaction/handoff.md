@@ -10,7 +10,7 @@ the traceability map current when names change.
   `cognate dev`-compatible). Decision recorded per `idm-to-cognate.md` gap note.
 - Projection load: `loadSemanticProjection(source, { uri })` → `SemanticProjection`; ids verified:
   entities/resources → `controlplane::<name>`; flows → `gsterm::flow(...)`; policies → `gsterm::*`.
-- Source digest at handoff: `sha256:d64a885e1b117bb664cae7b2745d5ba764bbbe66eac9d830f9a17cc2b45e0768`.
+- Source digest at handoff: `sha256:4dddc4862e4c1e55018e480799a04899082db8ddbfd8d8d0ab8e4b30502645a2` (Phase 3.5: J9 catalog entry extended for mounted SolidLSP).
 
 ## Explicit capability bindings (`bindCapabilities` — nothing implicit)
 
@@ -128,3 +128,28 @@ Focus/attention/search semantics are modeled in `interaction-model.sea` (J7–J1
 `src/focus/` (attention, focus reducer, search planner, mechanisms) + `src/components/focus.ts`
 (`focus.search`) + `src/agents/focus.ts` (`agent.focus`), and projected to the cockpit (`/` overlay +
 Focus panel) and WebMCP (focus tools; human resolution excluded).
+
+## Phase 3.5 snapshot — native semantic reduction substrate
+
+Baseline snapshot `8d46fb9`; the modeled-but-unavailable mechanisms (D-033/D-034) are mounted:
+
+- **gsterm-semantic** (Rust, `rust/crates/gsterm-semantic`): one managed stdio JSON-lines helper
+  hosting the zvec-grep engine (git-pinned `28ef200`), a zvec concept collection (zvec-rust 0.7.2),
+  and a model2vec embedder for `local/potion-code-16m-v2` (dim 256). Concept embeddings use the
+  same mean-pool math as the source indexer. Scores are cosine DISTANCES (ascending = better).
+- **gsterm-solidlsp** (Python, `solidlsp/`): uv-managed bridge over the `solidlsp` package from
+  PyPI `serena-agent==1.7.0` — the ONLY MIT-clean distribution (upstream main relicensed the Serena
+  application GPL; do not track main). Provisions typescript-language-server 5.1.3 + typescript
+  5.9.3 via a node→bun shim (Bun runs the whole TS LSP chain; no Node in the runtime graph).
+- **Bindings**: `code.definition` / `code.references` / `code.implementations` bound to
+  `controlplane::Code Symbol`; `code.diagnostics` bound to `controlplane::Diagnostic`.
+  `agent.focus` gained the `code` intent (WebMCP tools `code_references`, `code_definition`,
+  `code_diagnostics` project the same capabilities; human-gated operations unchanged).
+- **zvec responsibility split** unchanged: zvec-grep owns workspace source retrieval; the raw zvec
+  collection stores ONLY gs-term concept objects (`src/semantic/concepts.ts`, digest-marked store
+  in `<data_dir>/concepts`); explicit structural links stay authoritative — vector similarity never
+  creates topology.
+- **Planner routing** (`src/focus/search.ts`): known symbol → SolidLSP directly; exact identifier →
+  rg (+ SolidLSP verification); natural language → concepts → structural scope → zvec-grep →
+  rg snippet verification → SolidLSP; architecture/domain questions → concepts + structural scope
+  and STOP; execution failures → evidence-first as before. Receipts record only stages that ran.

@@ -8,6 +8,21 @@ export interface GsTermConfig {
   readonly execution: { readonly timeoutMs: number };
   /** Additional execution worlds (kind "ssh"). Same `process.exec` capability, different provider. */
   readonly worlds: Readonly<Record<string, SshWorldConfig>>;
+  /** Native semantic substrate (zvec-grep/zvec helper + SolidLSP bridge). Optional: absent = defaults. */
+  readonly mechanisms?: MechanismsConfig;
+}
+
+/** Mechanism substrate configuration. `enabled` gates mounting, never honesty. */
+export interface MechanismsConfig {
+  readonly enabled: boolean;
+  /** Explicit helper binary path; empty = discovery (artifacts, then target/release). */
+  readonly helperBinary: string;
+  /** Directory of the uv-managed SolidLSP bridge project, relative to the repo root. */
+  readonly solidlspProject: string;
+  /** Local embedding model reference (zvec-grep catalog). */
+  readonly model: string;
+  /** Data dir for indexes/concept store/language-server resources; empty = `<root>/.gsterm`. */
+  readonly dataDir: string;
 }
 
 /**
@@ -36,6 +51,7 @@ interface RawConfig {
   world?: { id?: string; root?: string };
   session?: { id?: string; shell?: string; cols?: number; rows?: number; scrollback_bytes?: number };
   execution?: { timeout_ms?: number };
+  mechanisms?: { enabled?: boolean; helper_binary?: string; solidlsp_project?: string; model?: string; data_dir?: string };
   worlds?: Record<
     string,
     {
@@ -83,12 +99,15 @@ function parseSshWorld(id: string, raw: NonNullable<RawConfig["worlds"]>[string]
 }
 
 
+const MECHANISMS_DEFAULTS: MechanismsConfig = { enabled: true, helperBinary: "", solidlspProject: "solidlsp", model: "local/potion-code-16m-v2", dataDir: "" };
+
 const DEFAULTS: GsTermConfig = {
   server: { hostname: "127.0.0.1", port: 7317 },
   world: { id: "local", root: "" },
   session: { id: "main", shell: "bash", cols: 120, rows: 32, scrollbackBytes: 262_144 },
   execution: { timeoutMs: 30_000 },
   worlds: {},
+  mechanisms: MECHANISMS_DEFAULTS,
 };
 
 /** Load configuration from `gsterm.toml` (if present) under `cwd`, then apply environment overrides. */
@@ -126,7 +145,25 @@ export async function loadConfig(cwd: string = process.cwd()): Promise<GsTermCon
     },
     execution: { timeoutMs: raw.execution?.timeout_ms ?? DEFAULTS.execution.timeoutMs },
     worlds,
+    mechanisms: {
+      enabled: raw.mechanisms?.enabled ?? MECHANISMS_DEFAULTS.enabled,
+      helperBinary: raw.mechanisms?.helper_binary ?? MECHANISMS_DEFAULTS.helperBinary,
+      solidlspProject: raw.mechanisms?.solidlsp_project ?? MECHANISMS_DEFAULTS.solidlspProject,
+      model: raw.mechanisms?.model ?? MECHANISMS_DEFAULTS.model,
+      dataDir: raw.mechanisms?.data_dir ?? MECHANISMS_DEFAULTS.dataDir,
+    },
   };
+}
+
+/** Mechanism config with defaults applied (use sites never re-implement the defaults). */
+export function mechanismsOf(config: GsTermConfig): MechanismsConfig {
+  return config.mechanisms ?? MECHANISMS_DEFAULTS;
+}
+
+/** Effective mechanism data dir: `<workspace root>/.gsterm` unless explicitly configured. */
+export function mechanismDataDir(config: GsTermConfig): string {
+  const configured = mechanismsOf(config).dataDir;
+  return configured === "" ? resolve(workspaceRoot(config), ".gsterm") : resolve(configured);
 }
 
 /** The effective workspace root (containment boundary + observation scope). */
