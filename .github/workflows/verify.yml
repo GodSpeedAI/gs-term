@@ -1,16 +1,22 @@
 # gs-term clean-machine oracle (Phase 3.6).
 #
 # Proves the portability story from a fresh GitHub-hosted runner:
-#   checkout → Devbox toolchain → bootstrap (pinned bun, rustup 1.98.0 helper,
-#   uv SolidLSP) → release verification — with Node invisible to the product
-#   path and NO semantic skips (GSTERM_REQUIRE_SEMANTIC=1).
+#   checkout -> bootstrap (SELF-CONTAINED: pinned bun 1.4.x, rustup 1.98.0
+#   helper build, uv SolidLSP) -> release verification -- with Node invisible to
+#   the product path and NO semantic skips (GSTERM_REQUIRE_SEMANTIC=1).
 #
 # The invariant is not "the runner image contains zero Node binaries" (GitHub's
 # own machinery needs Node); it is that gs-term's bootstrap/runtime/verification
-# environment does not depend on or resolve Node — enforced inside
-# scripts/verify-all.sh --release via the PATH scrub + `command -v node` check.
+# environment does not depend on or resolve Node -- enforced inside
+# scripts/verify-all.sh --release via the PATH scrub + node->bun shim check.
 #
-# This same job adjudicates D-040 (devbox/nix toolchain vs WSL-specific breakage).
+# Devbox adjudication (D-040, evidence from the first CI attempts): the devbox
+# nix profile binaries from current nixpkgs demand GLIBC 2.42/2.43 and fail on
+# ubuntu-24.04 runners (glibc 2.39) through the host loader -- the same
+# nix-glibc boundary that breaks builds on the WSL host. Devbox therefore
+# remains the LOCAL reproducibility oracle; CI exercises the same committed
+# scripts (scripts/bootstrap.sh + scripts/verify-all.sh --release) directly on
+# the host toolchain, which bootstrap.sh makes self-contained and explicit.
 
 name: verify
 
@@ -30,20 +36,6 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install nix
-        uses: cachix/install-nix-action@v31
-        with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
-
-      # Devbox CLI via the official install script (kept separate from nix so a
-      # failure in either is diagnosable; the jetify composite action has hit
-      # upstream "Invalid URL" nix-installer fetch bugs).
-      - name: Install Devbox CLI
-        run: |
-          curl -fsSL https://get.jetify.com/devbox | bash -s -- -f  # -f: non-interactive install
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          devbox version
 
       # Caches are acceleration, never correctness: a full cache miss still
       # bootstraps everything from the network (bun zip, crates, model, wheels).
@@ -80,7 +72,7 @@ jobs:
           key: uv-${{ runner.os }}-${{ hashFiles('solidlsp/uv.lock') }}
           restore-keys: uv-${{ runner.os }}-
 
-      # Warm potion model (~34 MB, sha256-pinned revision) — key never changes
+      # Warm potion model (~34 MB, sha256-pinned revision) -- key never changes
       # until the pinned revision in the helper changes.
       - name: Cache potion embedding model
         uses: actions/cache@v4
@@ -93,37 +85,27 @@ jobs:
           set -o pipefail
           {
             echo "== host =="; uname -a; ldd --version | head -1
-            echo "== devbox =="; devbox version
-            echo "== devbox tools =="; devbox run -- bash -c 'python3 --version; uv --version; rg --version | head -1; git --version; ssh -V 2>&1; cc --version | head -1; cmake --version | head -1'
-            echo "== node on host PATH (informational; scrubbed for product) =="; command -v node || echo "node: not on PATH"
+            echo "cc: $(cc --version | head -1)"; echo "cmake: $(cmake --version | head -1)"
+            echo "rg: $(rg --version | head -1)"; echo "git: $(git --version)"
+            echo "python3: $(python3 --version 2>&1)"
+            echo "node on host PATH (informational; scrubbed for product): $(command -v node || echo none)"
           } | tee /tmp/gsterm-versions.log
 
       - name: Bootstrap (bun + rustup 1.98.0 + helper build + solidlsp sync)
         shell: bash
-        env:
-          GSTERM_BOOTSTRAP_DEBUG: "1"
         run: |
           set -o pipefail
-          devbox run bootstrap 2>&1 | tee /tmp/gsterm-bootstrap.log
+          bash scripts/bootstrap.sh 2>&1 | tee /tmp/gsterm-bootstrap.log
 
       - name: Provision Playwright chromium
         run: |
-          # Playwright's chromium for the e2e gate; bun is the bootstrapped
-          # pinned binary (.devbin/bin), playwright comes from node_modules.
           "$GITHUB_WORKSPACE/.devbin/bin/bun" x playwright install --with-deps chromium
 
       - name: Release verification (node-free, no semantic skips)
         shell: bash
         run: |
           set -o pipefail
-          devbox run verify-release 2>&1 | tee /tmp/gsterm-verify.log
-
-      - name: Doctor summary (require-semantic profile)
-        if: always()
-        run: |
-          devbox run doctor --probe 2>&1 | tee /tmp/gsterm-doctor.log || true
-          echo "strict re-check (informational in summary step):"
-          devbox run doctor --require-semantic 2>&1 | tail -3 || true
+          bash scripts/verify-all.sh --release 2>&1 | tee /tmp/gsterm-verify.log
 
       - name: Upload failure artifacts
         if: failure()
@@ -134,6 +116,5 @@ jobs:
             /tmp/gsterm-versions.log
             /tmp/gsterm-bootstrap.log
             /tmp/gsterm-verify.log
-            /tmp/gsterm-doctor.log
           if-no-files-found: ignore
           retention-days: 14
