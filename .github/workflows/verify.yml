@@ -31,10 +31,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Devbox
-        uses: jetify-com/devbox-install-action@v0.11.0
+      - name: Install nix
+        uses: cachix/install-nix-action@v31
         with:
-          enable-cache: "true"
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Devbox CLI via the official install script (kept separate from nix so a
+      # failure in either is diagnosable; the jetify composite action has hit
+      # upstream "Invalid URL" nix-installer fetch bugs).
+      - name: Install Devbox CLI
+        run: |
+          curl -fsSL https://get.jetify.com/devbox | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          devbox version
 
       # Caches are acceleration, never correctness: a full cache miss still
       # bootstraps everything from the network (bun zip, crates, model, wheels).
