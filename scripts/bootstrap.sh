@@ -13,6 +13,9 @@ set -euo pipefail
 trap 'echo "bootstrap FAILED at line $LINENO: ${BASH_COMMAND}" >&2' ERR
 cd "$(dirname "$0")/.."
 
+# The bootstrap's own bin/shim/smoke area must exist before anything else.
+mkdir -p .devbin/bin .devbin/shims || { pwd; ls -la .devbin 2>&1; df -h . 2>&1; exit 1; }
+
 BUN_VERSION="${BUN_VERSION:-1.4.2}"
 RUST_VERSION="$(sed -n 's/^channel = "\(.*\)"/\1/p' rust/rust-toolchain.toml | head -1)"
 
@@ -28,7 +31,7 @@ say() { printf '\n== %s ==\n' "$*"; }
 smoke_cc() {  # $1 = compiler
   # Inside the checkout: TMPDIR (e.g. GitHub's _temp) may be mounted noexec,
   # which would falsely fail the run-the-output half of the smoke.
-  local tmp; tmp="$(mktemp -d "$PWD/.devbin/smoke.XXXXXX")" || return 1
+  local tmp; tmp="$(mktemp -d "$PWD/.devbin/smoke.XXXXXX")" || { echo "smoke: mktemp failed" >&2; return 1; }
   printf 'int main(void){return 0;}\n' > "$tmp/t.c" || return 1
   "$1" "$tmp/t.c" -o "$tmp/t" 2>/dev/null || { rm -rf "$tmp"; return 1; }
   "$tmp/t" 2>/dev/null; local status=$?
@@ -66,7 +69,6 @@ else
 fi
 
 # ── 1. Bun (pinned; nixpkgs has only 1.3.x, so bootstrap by download) ─────────
-mkdir -p .devbin/bin
 if command -v bun >/dev/null 2>&1 && [ "$(bun --version)" = "$BUN_VERSION" ]; then
   say "bun ${BUN_VERSION} already available"
 else
