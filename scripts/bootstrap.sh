@@ -48,6 +48,15 @@ if [ -n "$host_cc" ]; then
   export CC="$host_cc"
   [ -n "$host_cxx" ] && export CXX="$host_cxx"
   say "C toolchain: CC=$CC (host; nix cc excluded; $smoke_note)"
+  # Multiarch runtime dirs are reached through the ld cache; some slim runner
+  # images lack libstdc++ entries there, which breaks dlopen(libclang). Make
+  # the standard multiarch dir explicit when it holds the C++ runtime.
+  if [ -e /usr/lib/x86_64-linux-gnu/libstdc++.so.6 ]; then
+    case ":${LD_LIBRARY_PATH:-}:" in
+      *:/usr/lib/x86_64-linux-gnu:*) ;;
+      *) export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ;;
+    esac
+  fi
 elif command -v cc >/dev/null 2>&1; then
   say "C toolchain: no cc on a nix-free PATH — falling back to cc on PATH (nix): $(command -v cc)"
 else
