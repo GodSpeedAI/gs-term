@@ -18,3 +18,4 @@ solidlsp/.venv/
 .devbox/
 __pycache__/
 *.pyc
+.devbin/smoke.*

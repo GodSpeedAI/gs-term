@@ -25,7 +25,9 @@ say() { printf '\n== %s ==\n' "$*"; }
 #      also symlinks nix cc. So: discover the host cc on a nix-free PATH and
 #      export CC/CXX explicitly; nix remains the source for python/uv/rg/... .
 smoke_cc() {  # $1 = compiler
-  local tmp; tmp="$(mktemp -d)"
+  # Inside the checkout: TMPDIR (e.g. GitHub's _temp) may be mounted noexec,
+  # which would falsely fail the run-the-output half of the smoke.
+  local tmp; tmp="$(mktemp -d "$PWD/.devbin/smoke.XXXXXX")" || return 1
   printf 'int main(void){return 0;}\n' > "$tmp/t.c" || return 1
   "$1" "$tmp/t.c" -o "$tmp/t" 2>/dev/null || { rm -rf "$tmp"; return 1; }
   "$tmp/t" 2>/dev/null; local status=$?
