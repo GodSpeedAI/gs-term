@@ -1,5 +1,11 @@
 # gsterm-semantic
 
+> Reader-facing documentation for this helper lives in
+> [docs/reference/rust-helper-protocol.md](../../../docs/reference/rust-helper-protocol.md), and its
+> place in the system in
+> [docs/subsystems/semantic-substrate.md](../../../docs/subsystems/semantic-substrate.md). This file
+> remains the crate's own operational reference.
+
 gs-term's native semantic helper: one managed Rust process hosting
 
 - the **zvec-grep engine** (`zg-engine`, git-pinned) for hybrid semantic source retrieval;

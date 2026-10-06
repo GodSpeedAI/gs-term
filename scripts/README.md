@@ -2,6 +2,18 @@
 
 Two entry points; both are the real project gates, identical inside and outside devbox.
 
+| Script | Purpose |
+| --- | --- |
+| `bootstrap.sh` | idempotent environment provisioning (C toolchain sanity, pinned Bun, JS deps, Rust helper + artifacts, SolidLSP uv env) |
+| `verify-all.sh [--node-free] [--release]` | the validation gate: typecheck → lint → tests → Rust tests → SolidLSP self test → doctor → e2e |
+
+Canonical documentation:
+[docs/reference/cli-and-commands.md](../docs/reference/cli-and-commands.md),
+[docs/how-to/bootstrap-the-environment.md](../docs/how-to/bootstrap-the-environment.md) and
+[docs/how-to/validate-a-change.md](../docs/how-to/validate-a-change.md).
+
+The rest of this file is the operational detail.
+
 ## `scripts/bootstrap.sh`
 
 Idempotent environment provisioning:

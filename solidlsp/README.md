@@ -184,3 +184,11 @@ there is no network at request time.
   shim), warm start, full protocol suite, restart, shutdown, orphan + stray-write checks,
   all under a PATH scrubbed of node/npm
 - `uv.lock` — committed; `uv sync` reproduces the environment deterministically
+
+---
+
+> Reader-facing documentation for this bridge lives in
+> [docs/reference/solidlsp-protocol.md](../docs/reference/solidlsp-protocol.md), and its place in the
+> system in [docs/subsystems/semantic-substrate.md](../docs/subsystems/semantic-substrate.md).
+> `docs/explanation/why-no-node.md` covers the Bun-instead-of-Node rationale and the licensing pin.
+> This file remains the bridge's own operational reference.
