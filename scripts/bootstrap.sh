@@ -17,32 +17,30 @@ RUST_VERSION="$(sed -n 's/^channel = "\(.*\)"/\1/p' rust/rust-toolchain.toml | h
 
 say() { printf '\n== %s ==\n' "$*"; }
 
-# ── 0. Rust build toolchain boundary (D-040, explicit): the Rust build uses
-#      the HOST C toolchain when one exists. Nix gcc wrappers drag a nix
-#      loader/libstdc++ boundary into bindgen/libclang loading (observed on
-#      both the WSL host and GitHub runners); a mixed host/nix stack is never
-#      guessed at — host first, nix only as fallback, then a smoke test.
-smoke_cc() {
+# ── 0. Rust build toolchain boundary (D-040, explicit): the Rust build pins
+#      CC/CXX to the HOST compiler when one exists. Nix gcc wrappers drag a
+#      nix loader/libstdc++ boundary into bindgen/libclang loading (observed
+#      on both the WSL host and GitHub runners) — and a PATH filter alone is
+#      not enough because the devbox PROFILE dir (`.devbox/nix/profile/bin`)
+#      also symlinks nix cc. So: discover the host cc on a nix-free PATH and
+#      export CC/CXX explicitly; nix remains the source for python/uv/rg/... .
+smoke_cc() {  # $1 = compiler
   local tmp; tmp="$(mktemp -d)"
   printf 'int main(void){return 0;}\n' > "$tmp/t.c" || return 1
-  cc "$tmp/t.c" -o "$tmp/t" 2>/dev/null || { rm -rf "$tmp"; return 1; }
+  "$1" "$tmp/t.c" -o "$tmp/t" 2>/dev/null || { rm -rf "$tmp"; return 1; }
   "$tmp/t" 2>/dev/null; local status=$?
   rm -rf "$tmp"
   return "$status"
 }
-no_nix_path="$(printf %s "$PATH" | tr ':' '\n' | grep -v '/nix/store/' | paste -sd:)"
-if [ "$no_nix_path" != "$PATH" ] && PATH="$no_nix_path" command -v cc >/dev/null 2>&1; then
-  say "C toolchain: using the HOST compiler for the Rust build (nix packages stay available for python/uv/rg/...)"
-  export PATH="$no_nix_path"
-  hash -r 2>/dev/null || true
-fi
-if command -v cc >/dev/null 2>&1 && ! smoke_cc; then
-  say "smoke test: cc on PATH cannot run its own output — stripping nix toolchain dirs"
-  PATH="$(printf %s "$PATH" | tr ':' '\n' | grep -v '/nix/store/' | paste -sd:)"
-  export PATH
-  hash -r 2>/dev/null || true
-  command -v cc >/dev/null 2>&1 || { echo "error: no working C compiler after nix strip — install build-essential" >&2; exit 1; }
-  smoke_cc || { echo "error: host cc also failed the smoke test" >&2; exit 1; }
+no_nix_path="$(printf %s "$PATH" | tr ':' '\n' | grep -vE '/nix/store/|/\.devbox/nix/' | paste -sd:)"
+host_cc="$(PATH="$no_nix_path" command -v cc 2>/dev/null || true)"
+if [ -n "$host_cc" ] && smoke_cc "$host_cc"; then
+  host_cxx="$(PATH="$no_nix_path" command -v 'c++' 2>/dev/null || true)"
+  export CC="$host_cc"
+  [ -n "$host_cxx" ] && export CXX="$host_cxx"
+  say "C toolchain: CC=$CC (host; nix cc excluded from the Rust build)"
+else
+  say "C toolchain: no working host cc found — using cc on PATH (nix)"
 fi
 
 # ── 1. Bun (pinned; nixpkgs has only 1.3.x, so bootstrap by download) ─────────
