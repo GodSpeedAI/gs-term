@@ -17,6 +17,7 @@ cd "$(dirname "$0")/.."
 mkdir -p .devbin/bin .devbin/shims || { pwd; ls -la .devbin 2>&1; df -h . 2>&1; exit 1; }
 
 BUN_VERSION="${BUN_VERSION:-1.4.2}"
+RG_VERSION="${RG_VERSION:-15.1.0}"
 RUST_VERSION="$(sed -n 's/^channel = "\(.*\)"/\1/p' rust/rust-toolchain.toml | head -1)"
 
 say() { printf '\n== %s ==\n' "$*"; }
@@ -87,6 +88,26 @@ PYEOF
 fi
 export PATH="$PWD/.devbin/bin:$PATH"
 echo "bun $(bun --version)"
+
+# ── 1b. ripgrep (pinned; not preinstalled on all runner images) ───────────────
+if ! command -v rg >/dev/null 2>&1; then
+  say "installing ripgrep ${RG_VERSION} into .devbin/bin"
+  case "$(uname -m)" in
+    aarch64|arm64) RG_ARCH="aarch64-unknown-linux-musl" ;;
+    *) RG_ARCH="x86_64-unknown-linux-musl" ;;
+  esac
+  url="https://github.com/BurntSushi/ripgrep/releases/download/${RG_VERSION}/ripgrep-${RG_VERSION}-${RG_ARCH}.tar.gz"
+  curl -fsSL "$url" -o /tmp/rg.tgz || { echo "error: ripgrep download failed — ${url}" >&2; exit 1; }
+  python3 - /tmp/rg.tgz <<'PYEOF'
+import sys, zipfile, tarfile
+with tarfile.open(sys.argv[1]) as t:
+    t.extractall("/tmp/rg-extract")
+PYEOF
+  mv -f "/tmp/rg-extract/ripgrep-${RG_VERSION}-${RG_ARCH}/rg" .devbin/bin/rg
+  chmod +x .devbin/bin/rg
+  rm -rf /tmp/rg-extract /tmp/rg.tgz
+fi
+echo "rg $(rg --version | head -1)"
 
 # ── 2. JS dependencies ────────────────────────────────────────────────────────
 say "bun install (frozen lockfile)"
