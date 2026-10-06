@@ -17,9 +17,11 @@ RUST_VERSION="$(sed -n 's/^channel = "\(.*\)"/\1/p' rust/rust-toolchain.toml | h
 
 say() { printf '\n== %s ==\n' "$*"; }
 
-# ── 0. C toolchain sanity (D-040): a `cc` that cannot RUN its own output is
-#      worse than absent — strip broken nix toolchain dirs from PATH so cargo
-#      falls through to the host compiler. Deterministic smoke, not a guess.
+# ── 0. Rust build toolchain boundary (D-040, explicit): the Rust build uses
+#      the HOST C toolchain when one exists. Nix gcc wrappers drag a nix
+#      loader/libstdc++ boundary into bindgen/libclang loading (observed on
+#      both the WSL host and GitHub runners); a mixed host/nix stack is never
+#      guessed at — host first, nix only as fallback, then a smoke test.
 smoke_cc() {
   local tmp; tmp="$(mktemp -d)"
   printf 'int main(void){return 0;}\n' > "$tmp/t.c" || return 1
@@ -28,6 +30,12 @@ smoke_cc() {
   rm -rf "$tmp"
   return "$status"
 }
+no_nix_path="$(printf %s "$PATH" | tr ':' '\n' | grep -v '/nix/store/' | paste -sd:)"
+if [ "$no_nix_path" != "$PATH" ] && PATH="$no_nix_path" command -v cc >/dev/null 2>&1; then
+  say "C toolchain: using the HOST compiler for the Rust build (nix packages stay available for python/uv/rg/...)"
+  export PATH="$no_nix_path"
+  hash -r 2>/dev/null || true
+fi
 if command -v cc >/dev/null 2>&1 && ! smoke_cc; then
   say "smoke test: cc on PATH cannot run its own output — stripping nix toolchain dirs"
   PATH="$(printf %s "$PATH" | tr ':' '\n' | grep -v '/nix/store/' | paste -sd:)"

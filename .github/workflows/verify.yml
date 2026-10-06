@@ -57,6 +57,13 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('rust/Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 
+      - name: Cache cargo build artifacts
+        uses: actions/cache@v4
+        with:
+          path: rust/target
+          key: cargo-target-${{ runner.os }}-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: cargo-target-${{ runner.os }}-
+
       - name: Cache bun packages
         uses: actions/cache@v4
         with:
@@ -92,7 +99,10 @@ jobs:
           } | tee /tmp/gsterm-versions.log
 
       - name: Bootstrap (bun + rustup 1.98.0 + helper build + solidlsp sync)
-        run: devbox run bootstrap 2>&1 | tee /tmp/gsterm-bootstrap.log
+        shell: bash
+        run: |
+          set -o pipefail
+          devbox run bootstrap 2>&1 | tee /tmp/gsterm-bootstrap.log
 
       - name: Provision Playwright chromium
         run: |
@@ -101,7 +111,10 @@ jobs:
           "$GITHUB_WORKSPACE/.devbin/bin/bun" x playwright install --with-deps chromium
 
       - name: Release verification (node-free, no semantic skips)
-        run: devbox run verify-release 2>&1 | tee /tmp/gsterm-verify.log
+        shell: bash
+        run: |
+          set -o pipefail
+          devbox run verify-release 2>&1 | tee /tmp/gsterm-verify.log
 
       - name: Doctor summary (require-semantic profile)
         if: always()

@@ -40,10 +40,24 @@ if [ "$NODE_FREE" = 1 ]; then
   PATH="$(printf %s "$PATH" | tr ':' '\n' | grep -vE '(^|/)(node|nvm|\.nub|mise|volta|fnm|pnpm|npm|yarn)(/|$)|/mnt/c/' | paste -sd:)"
   export PATH
   hash -r 2>/dev/null || true
-  if command -v node >/dev/null 2>&1; then
-    fail "node visible at $(command -v node) — the required stack must be node-free"
+  # The invariant (D-042): the product stack must never reach a REAL Node
+  # binary. `node` may only resolve to OUR bun shim (exactly the compatibility
+  # surface the SolidLSP bridge relies on) or to nothing at all.
+  mkdir -p .devbin/shims
+  printf '#!/bin/sh\nexec "%s" "$@"\n' "$(command -v bun)" > .devbin/shims/node
+  chmod +x .devbin/shims/node
+  PATH="$PWD/.devbin/shims:$PATH"
+  export PATH
+  hash -r 2>/dev/null || true
+  resolved="$(command -v node 2>/dev/null || true)"
+  if [ -n "$resolved" ] && [ "$resolved" != "$PWD/.devbin/shims/node" ]; then
+    fail "node resolves to $resolved — the product stack must never reach a real Node binary"
   fi
-  echo "node-free: OK"
+  if [ -n "$resolved" ]; then
+    echo "node-free: OK (node resolves to the bun shim: $resolved)"
+  else
+    echo "node-free: OK (no node on PATH at all)"
+  fi
   command -v bun >/dev/null 2>&1 || fail "bun not found after PATH scrub (run scripts/bootstrap.sh)"
 fi
 
