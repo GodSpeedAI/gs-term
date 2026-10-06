@@ -100,6 +100,8 @@ jobs:
 
       - name: Bootstrap (bun + rustup 1.98.0 + helper build + solidlsp sync)
         shell: bash
+        env:
+          GSTERM_BOOTSTRAP_DEBUG: "1"
         run: |
           set -o pipefail
           devbox run bootstrap 2>&1 | tee /tmp/gsterm-bootstrap.log
