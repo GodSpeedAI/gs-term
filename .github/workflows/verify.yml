@@ -41,7 +41,7 @@ jobs:
       # upstream "Invalid URL" nix-installer fetch bugs).
       - name: Install Devbox CLI
         run: |
-          curl -fsSL https://get.jetify.com/devbox | bash
+          curl -fsSL https://get.jetify.com/devbox | bash -f  # -f: non-interactive
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           devbox version
 
