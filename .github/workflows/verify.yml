@@ -95,7 +95,7 @@ jobs:
         run: devbox run bootstrap 2>&1 | tee /tmp/gsterm-bootstrap.log
 
       - name: Provision Playwright chromium
-        run: bunx playwright install --with-deps chromium
+        run: devbox run -- bunx playwright install --with-deps chromium
 
       - name: Release verification (node-free, no semantic skips)
         run: devbox run verify-release 2>&1 | tee /tmp/gsterm-verify.log
