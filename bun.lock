@@ -109,7 +109,7 @@
 
     "@cognate/proto": ["@cognate/proto@./.cognate/vendor/cognate-proto-0.0.0.tgz", { "dependencies": { "@bufbuild/protobuf": "2.15.0" } }, "sha512-0b+xy54p/SrZSLz1Yof+HdMD4W4P1cIwCD4PG6ugFkRaMbesIi8GJO0FZx2w3AgvJEoUCGpNF+maIIJHuyDiTA=="],
 
-    "@cognate/protocol-connect": ["@cognate/protocol-connect@./.cognate/vendor/cognate-protocol-connect-0.0.0.tgz", { "dependencies": { "@bufbuild/protobuf": "2.15.0", "@cognate/events": "0.0.0", "@cognate/kernel-api": "0.0.0", "@cognate/proto": "0.0.0", "@cognate/runtime-api": "0.0.0", "@connectrpc/connect": "2.2.0" } }, "sha512-nJlAZbNnX47+h8ch/JRwbloiGk8ndq1KQCuTBnv4L8Y5qaea7idqE2oyXV8/ZAs52wzZLS1PUyQ3ZF/XGE0rdA=="],
+    "@cognate/protocol-connect": ["@cognate/protocol-connect@./.cognate/vendor/cognate-protocol-connect-0.0.0.tgz", { "dependencies": { "@bufbuild/protobuf": "2.15.0", "@cognate/events": "0.0.0", "@cognate/kernel-api": "0.0.0", "@cognate/proto": "0.0.0", "@cognate/runtime-api": "0.0.0", "@connectrpc/connect": "2.2.0" } }, "sha512-+TWB70kXAH+55JoI/Rw7hMa5uzoXYjqRkUxK3n9Smk4qqyhXLcUKSnWhsC2IrRKrP+rpR/PAbBtGsD4VTdPzfA=="],
 
     "@cognate/protocol-connect-bun": ["@cognate/protocol-connect-bun@./.cognate/vendor/cognate-protocol-connect-bun-0.0.0.tgz", { "dependencies": { "@cognate/protocol-connect": "0.0.0", "@cognate/runtime-api": "0.0.0", "@connectrpc/connect": "2.2.0", "@connectrpc/connect-web": "2.2.0" } }, "sha512-izENSK1z1VsVJyqUBHV2SqAe8+GoQSCwm0/aOMu0gJD2Cft6KloXFXEIWIxU/M03QsammP+qjJQCIIBsu55aKg=="],
 
@@ -119,9 +119,9 @@
 
     "@cognate/react": ["@cognate/react@./.cognate/vendor/cognate-react-0.0.0.tgz", { "dependencies": { "@cognate/client": "0.0.0", "@cognate/events": "0.0.0", "@cognate/runtime-api": "0.0.0" }, "peerDependencies": { "react": "19.3.0" } }, "sha512-v8szZD8S89cLdHhnHxqf+xfcZFN6ocbR3TgrA7ISGHTtweYZ9iDQqvyWiodOen5L20b2ju3HYf8gW9C5vHXu3w=="],
 
-    "@cognate/runtime-api": ["@cognate/runtime-api@./.cognate/vendor/cognate-runtime-api-0.0.0.tgz", { "dependencies": { "@cognate/events": "0.0.0", "@cognate/kernel-api": "0.0.0" } }, "sha512-M7yh5zF4yqS76DCP6b7m7QItbax1Bs4jNngvmSqv+WcFPZhR3ilN1wr3gIqt1WMHxkklkYF5Q482pSHO2jEMrg=="],
+    "@cognate/runtime-api": ["@cognate/runtime-api@./.cognate/vendor/cognate-runtime-api-0.0.0.tgz", { "dependencies": { "@cognate/events": "0.0.0", "@cognate/kernel-api": "0.0.0" } }, "sha512-6ceEzmehlJ6trDm9WqVHwkBCXF4AZPf5IMEZvwlvHmkMLo7zt6IdjijgmoLtvD9tK17nZW5pqAZGON/alWnFDQ=="],
 
-    "@cognate/runtime-bun": ["@cognate/runtime-bun@./.cognate/vendor/cognate-runtime-bun-0.0.0.tgz", { "dependencies": { "@cognate/artifacts": "0.0.0", "@cognate/capabilities": "0.0.0", "@cognate/cognitive-api": "0.0.0", "@cognate/continuations": "0.0.0", "@cognate/events": "0.0.0", "@cognate/kernel-api": "0.0.0", "@cognate/kernel-cordis": "0.0.0", "@cognate/projections": "0.0.0", "@cognate/runtime-api": "0.0.0", "@cognate/store-memory": "0.0.0", "@cognate/store-sqlite": "0.0.0" } }, "sha512-/gcrNw4PYvHKu9hRvDHgRFPGojFVkLLoXqkyPUa40tx3JJwJZNXVPjHtHWIZ42JpmCrYq23ihS3YkeisTNduLA=="],
+    "@cognate/runtime-bun": ["@cognate/runtime-bun@./.cognate/vendor/cognate-runtime-bun-0.0.0.tgz", { "dependencies": { "@cognate/artifacts": "0.0.0", "@cognate/capabilities": "0.0.0", "@cognate/cognitive-api": "0.0.0", "@cognate/continuations": "0.0.0", "@cognate/events": "0.0.0", "@cognate/kernel-api": "0.0.0", "@cognate/kernel-cordis": "0.0.0", "@cognate/projections": "0.0.0", "@cognate/runtime-api": "0.0.0", "@cognate/store-memory": "0.0.0", "@cognate/store-sqlite": "0.0.0" } }, "sha512-SzzvqmdQ9EWvZrKS8Wcij3EIy0FYjv5V4KUvjkJbz02165uaKFgWRBYovUw0acuWYu/gNM26v0irN5lMh4wtbQ=="],
 
     "@cognate/store-memory": ["@cognate/store-memory@./.cognate/vendor/cognate-store-memory-0.0.0.tgz", { "dependencies": { "@cognate/events": "0.0.0" } }, "sha512-2sf1gzYgxLOtCvYIX+I+w+WUmV0hujDCD1atkiM3YisNE8pVrts+rDWhMZ3rMep6vsiieQyA57vaiFASDgJbAQ=="],
 
