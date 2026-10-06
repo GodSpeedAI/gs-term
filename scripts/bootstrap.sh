@@ -36,13 +36,23 @@ smoke_cc() {  # $1 = compiler
 }
 no_nix_path="$(printf %s "$PATH" | tr ':' '\n' | grep -vE '/nix/store/|/\.devbox/nix/' | paste -sd:)"
 host_cc="$(PATH="$no_nix_path" command -v cc 2>/dev/null || true)"
-if [ -n "$host_cc" ] && smoke_cc "$host_cc"; then
+if [ -n "$host_cc" ]; then
+  # Trust build-essential; the smoke is a WARNING (runners have exec-quirks),
+  # the real adjudication is the build itself — visible in the logs either way.
+  if smoke_cc "$host_cc"; then
+    smoke_note="smoke ok"
+  else
+    smoke_note="smoke FAILED (continuing; the build will adjudicate)"
+  fi
   host_cxx="$(PATH="$no_nix_path" command -v 'c++' 2>/dev/null || true)"
   export CC="$host_cc"
   [ -n "$host_cxx" ] && export CXX="$host_cxx"
-  say "C toolchain: CC=$CC (host; nix cc excluded from the Rust build)"
+  say "C toolchain: CC=$CC (host; nix cc excluded; $smoke_note)"
+elif command -v cc >/dev/null 2>&1; then
+  say "C toolchain: no cc on a nix-free PATH — falling back to cc on PATH (nix): $(command -v cc)"
 else
-  say "C toolchain: no working host cc found — using cc on PATH (nix)"
+  echo "error: no C compiler found — install build-essential or enter devbox" >&2
+  exit 1
 fi
 
 # ── 1. Bun (pinned; nixpkgs has only 1.3.x, so bootstrap by download) ─────────
