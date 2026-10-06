@@ -10,6 +10,7 @@
 #   C/C++   — the first working `cc` on PATH is smoke-tested; a broken nix-toolchain
 #             PATH is stripped deterministically (D-040 adjudication, see below)
 set -euo pipefail
+trap 'echo "bootstrap FAILED at line $LINENO: ${BASH_COMMAND}" >&2' ERR
 cd "$(dirname "$0")/.."
 
 BUN_VERSION="${BUN_VERSION:-1.4.2}"
@@ -46,7 +47,7 @@ if [ -n "$host_cc" ]; then
   fi
   host_cxx="$(PATH="$no_nix_path" command -v 'c++' 2>/dev/null || true)"
   export CC="$host_cc"
-  [ -n "$host_cxx" ] && export CXX="$host_cxx"
+  if [ -n "$host_cxx" ]; then export CXX="$host_cxx"; fi
   say "C toolchain: CC=$CC (host; nix cc excluded; $smoke_note)"
   # Multiarch runtime dirs are reached through the ld cache; some slim runner
   # images lack libstdc++ entries there, which breaks dlopen(libclang). Make
