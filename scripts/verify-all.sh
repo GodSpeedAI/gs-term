@@ -36,6 +36,10 @@ if [ "$RELEASE" = 1 ]; then
 fi
 
 if [ "$NODE_FREE" = 1 ]; then
+  # The bootstrapped pinned bun is the product runtime — make it discoverable
+  # regardless of the caller's PATH (bootstrap exports it only in its own step).
+  [ -x .devbin/bin/bun ] && PATH="$PWD/.devbin/bin:$PATH"
+  export PATH
   # Scrub host PATH of node/npm managers, keep the bootstrapped bun dir.
   PATH="$(printf %s "$PATH" | tr ':' '\n' | grep -vE '(^|/)(node|nvm|\.nub|mise|volta|fnm|pnpm|npm|yarn)(/|$)|/mnt/c/' | paste -sd:)"
   export PATH
