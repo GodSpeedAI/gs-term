@@ -94,6 +94,13 @@ echo "rustc $(rustc --version)"
 # ── 4. Rust semantic helper ──────────────────────────────────────────────────
 if [ -f rust/Cargo.toml ]; then
   say "building Rust helper (first build compiles llama.cpp; expect minutes)"
+  if [ "${GSTERM_BOOTSTRAP_DEBUG:-0}" = "1" ]; then
+    say "toolchain diagnostics"
+    env | grep -E '^(LD_LIBRARY_PATH|LIBRARY_PATH|LIBCLANG|CLANG|CC|CXX|PATH)=' || true
+    echo "cc -> $(command -v cc 2>/dev/null || echo none)"
+    ldconfig -p 2>/dev/null | grep -m2 libstdc || echo "no libstdc in cache"
+    ls .devbox/nix/profile/default/lib 2>/dev/null | grep -m5 -E 'clang|stdc' || true
+  fi
   (cd rust && cargo build --release -p gsterm-semantic)
   bash rust/scripts/install-artifacts.sh
 else
