@@ -360,18 +360,28 @@ Owners: `gs-term` · `Cognate` · `DomainForge` · `Bun` · `unresolved`.
 ## Phase 3.5 new debt
 
 ### D-040 Devbox nix toolchain cannot build the Rust helper on this host
-- **Current behavior:** on this WSL2 host the devbox shell's nix gcc 16.2 wrapper produces
-  build-script binaries that SIGSEGV (proc-macro2/quote/ort-sys build scripts crash). Phase 3.6
-  made the toolchain boundary explicit and self-adjudicating: `scripts/bootstrap.sh` smoke-tests
-  `cc` (compile + run a trivial binary) and deterministically strips `/nix/store` toolchain dirs
-  from PATH when the smoke fails, then installs rustup + the pinned 1.98.0 toolchain itself if
-  cargo is missing. The toolchain sources are explicit: rustup + `rust-toolchain.toml` for Rust;
-  a working host `cc` for linking (devbox still owns python/uv/rg/git/ssh deterministically).
-- **CI adjudication:** `.github/workflows/verify.yml` runs the same bootstrap on a fresh
-  ubuntu-latest runner. If it passes there, this debt narrows to "WSL-host-specific nix gcc
-  incompatibility" (not a general Devbox defect). If it reproduces, the smoke-test strip makes
-  the fallback explicit rather than environmental. · **Owner:** gs-term · **Status:** `watch`
-  (pending first CI run result)
+- **Current behavior:** nixpkgs binaries from current nixpkgs demand GLIBC 2.42/2.43 and break
+  through the host loader in TWO adjudicated forms: on this WSL2 host the devbox shell's nix gcc
+  16.2 wrapper produces build-script binaries that SIGSEGV (proc-macro2/quote/ort-sys), and on
+  ubuntu-24.04 CI runners the devbox nix **profile** binaries themselves fail to exec (host
+  glibc 2.39). The toolchain boundary is therefore explicit and self-adjudicating in
+  `scripts/bootstrap.sh`: CC/CXX are pinned to the HOST `cc` discovered on a nix-free PATH
+  (the profile dir also symlinks nix cc, so a PATH filter alone is insufficient); the compile+run
+  smoke test only WARNS (runners have noexec-quirks) — the build itself adjudicates; the
+  multiarch C++ runtime dir is made explicit for `dlopen(libclang)`. Toolchain sources: rustup +
+  `rust-toolchain.toml` for Rust, host `cc` for linking, and bootstrap is otherwise SELF-CONTAINED
+  (pinned bun 1.4.2 + ripgrep 15.1.0 musl downloaded into `.devbin/bin`; ubuntu-latest has
+  neither).
+- **CI adjudication (clean-machine oracle campaign, 2026-10-06/07):** the nix-glibc boundary
+  reproduced on GitHub runners, so Devbox was REMOVED from CI (commit `f5aa1ae`) — not a general
+  Devbox defect, but a general nixpkgs↔host-loader boundary that cannot be papered over per-host.
+  `.github/workflows/verify.yml` now exercises the same committed scripts
+  (`scripts/bootstrap.sh` + `scripts/verify-all.sh --release`) directly on the host toolchain;
+  Devbox remains the LOCAL reproducibility oracle. The final CI iterations failed only on an
+  application-level search-routing bug (J10), never on toolchain.
+- **Reconsider:** if nixpkgs' GLIBC floor drops to what distro hosts carry, or hermetic CI
+  toolchains are needed again. · **Owner:** gs-term · **Status:** `accepted`
+  (toolchain split: devbox = local oracle; CI = committed scripts on host)
 
 ### D-041 SolidLSP workspace/symbol (navto) needs loaded projects on tsserver
 - **Update (Phase 3.6):** importance reduced by coordinate-first routing. The planner now spends
@@ -389,9 +399,15 @@ Owners: `gs-term` · `Cognate` · `DomainForge` · `Bun` · `unresolved`.
   `node→bun` shim; SolidLSP's `which("node")`/`which("npm")` asserts are satisfied by that shim
   and an npm→bun translator. This is proven-safe (byte-identical LSP results, Node absent from
   PATH in the selftest and the node-free gate) but remains a compatibility surface to re-verify
-  when Bun or typescript-language-server upgrades. · **Reconsider:** each Bun/TSL upgrades;
-  long-term via a native Rust LSP client (see plan's elimination note). · **Owner:** gs-term ·
-  **Status:** `watch`
+  when Bun or typescript-language-server upgrades.
+- **Clean-machine CI evidence (2026-10-06/07):** the boundary held on a fresh ubuntu runner with
+  Node never installed: `verify-all.sh --release` scrubs node-family entries from PATH before
+  anything runs, discovers the bootstrapped bun in `.devbin/bin` BEFORE the scrub (commit
+  `879f173`), provisions Playwright through `.devbin/bin/bun x`, and the shim carried
+  typescript-language-server under Bun 1.4.x for the full `GSTERM_REQUIRE_SEMANTIC=1` suite.
+  The gate is an assertion, not a convention — a future shim regression fails the run.
+- **Reconsider:** each Bun/TSL upgrades; long-term via a native Rust LSP client (see plan's
+  elimination note). · **Owner:** gs-term · **Status:** `watch`
 
 ## Deferred architectural seams (not debt — intentionally un-built)
 

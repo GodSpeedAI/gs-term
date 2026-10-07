@@ -11,11 +11,12 @@
   verify-release`) = node-free + `GSTERM_REQUIRE_SEMANTIC=1` (semantic skips become failures
   via `test/support/semantic-gate.ts`) + `bun run doctor --require-semantic` + DomainForge
   projection round-trip + everything unskippable.
-- Clean-machine CI oracle: `.github/workflows/verify.yml` — fresh ubuntu-latest runner,
-  Devbox toolchain, `devbox run bootstrap` (self-contained: pinned bun, rustup 1.98.0, uv;
-  cc smoke-test adjudicates the nix-toolchain PATH, D-040), `devbox run verify-release`.
-  Caches (cargo/bun/uv/potion model) are acceleration only; failure artifacts upload
-  bootstrap/verify/doctor logs.
+- Clean-machine CI oracle: `.github/workflows/verify.yml` — fresh ubuntu-latest runner, NO
+  devbox (nix-glibc boundary adjudicated, D-040): `scripts/bootstrap.sh` runs directly and is
+  self-contained (pinned bun 1.4.2 + ripgrep 15.1.0 downloaded into `.devbin/bin`; host `cc`
+  pinned via CC/CXX; rustup 1.98.0; helper build; uv SolidLSP sync), then
+  `scripts/verify-all.sh --release`. Caches (cargo/bun/uv/potion model) are acceleration only;
+  failure artifacts upload bootstrap/verify/doctor logs. Devbox remains the local oracle.
 
 **Phase 3.5 (2026-10-05)** — native semantic reduction substrate mounted and proven.
 
@@ -61,5 +62,7 @@ Acceptance proofs (`test/journeys/journey-j9-semantic-reduction.test.ts`):
 
 ## Known watch items
 
-See `.agents/DEBT.md`: D-040 (devbox nix gcc cannot build Rust here → host rustup), D-041
-(tsserver navto needs loaded projects → planner warm-up), D-042 (node→bun shim boundary).
+See `.agents/DEBT.md`: D-040 (nix-glibc boundary: devbox = local oracle, CI runs the committed
+scripts on the host toolchain), D-041
+(tsserver navto needs loaded projects → planner warm-up), D-042 (node→bun shim boundary,
+CI-proven on a fresh runner).
