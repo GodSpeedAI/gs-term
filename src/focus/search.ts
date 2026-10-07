@@ -361,7 +361,12 @@ export async function syntelligentSearch(request: SearchRequest, context: Search
   // who-calls-this/what-is-this when SolidLSP already produced semantic answers
   // (rg is the stated FALLBACK for known symbols, not a supplement).
   const semanticAnswered = stages.some((stage) => stage.mechanism === "solidlsp" && stage.candidates > 0);
-  const rgAllowed = intent !== "architecture" && !((intent === "who-calls-this" || intent === "what-is-this") && semanticAnswered);
+  // rg is the IDENTIFIER tier: single-token/quoted exact lookups. A multi-word
+  // natural-language question is not an exact identifier — it belongs to the
+  // concept → zvec-grep → verification chain, and a lexical preemption would
+  // both starve the semantic stage and make results depend on rg's luck.
+  const naturalLanguage = intent === "semantic" && /\s/.test(request.query.trim());
+  const rgAllowed = intent !== "architecture" && !naturalLanguage && !((intent === "who-calls-this" || intent === "what-is-this") && semanticAnswered);
   if (results.length < MAX_RESULTS && usable("rg") && rgAllowed) {
     const term = pickSearchTerm(request, intent);
     if (term) {
