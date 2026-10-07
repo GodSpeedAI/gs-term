@@ -20,7 +20,7 @@ interface FakeCalls {
   readonly rg: string[];
 }
 
-function fakeHelper(calls: FakeCalls, options: { startFails?: boolean; concepts?: readonly ConceptMatch[]; items?: readonly ZgSearchItem[]; failSearch?: boolean } = {}): SemanticHelper {
+function fakeHelper(calls: FakeCalls, options: { startFails?: boolean; concepts?: readonly ConceptMatch[]; items?: readonly ZgSearchItem[]; failSearch?: boolean; unindexed?: boolean; indexFails?: boolean } = {}): SemanticHelper {
   return {
     get running() {
       return true;
@@ -34,6 +34,15 @@ function fakeHelper(calls: FakeCalls, options: { startFails?: boolean; concepts?
     async conceptQuery(_store: string, _text: string, _topk: number): Promise<{ items: readonly ConceptMatch[] }> {
       calls.helper.push("conceptQuery");
       return { items: options.concepts ?? [] };
+    },
+    async zgInfo(_root: string): Promise<{ indexed: boolean }> {
+      calls.helper.push("zgInfo");
+      return { indexed: !options.unindexed };
+    },
+    async zgIndex(_root: string): Promise<{ files_scanned: number }> {
+      calls.helper.push("zgIndex");
+      if (options.indexFails) throw new Error("zg index failed");
+      return { files_scanned: 7 };
     },
     async zgSearch(_params: { root: string; query: string; mode: string; limit?: number }): Promise<{ source: string; coverage: string; items: readonly ZgSearchItem[] }> {
       calls.helper.push("zgSearch");
@@ -266,6 +275,53 @@ describe("planner routing with a substrate", () => {
       expect(outcome.results.every((result) => result.evidence.some((e) => e.how === "rg"))).toBe(true);
       // Concept-linked module ranks strongest.
       expect(outcome.results[0]!.relevance).toBe("strongest");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("unindexed workspaces build the zg index on demand before searching", async () => {
+    const calls: FakeCalls = { helper: [], solidlsp: [], rg: [] };
+    const root = workspace();
+    try {
+      const concepts: readonly ConceptMatch[] = [
+        { id: "c:1", kind: "concept", label: "Greeting", score: 0.4, metadata: {}, links: ["alpha.ts"] },
+      ];
+      const items: readonly ZgSearchItem[] = [
+        { relative_path: "beta.ts", start_line: 2, end_line: 2, snippet: "return greet('x');", score: 0.2, matched_by: "fts+vector", symbol_name: "run", symbol_type: "function", status: "fresh" },
+      ];
+      // A fresh checkout (clean-machine oracle, a new world) has no workspace
+      // index; the pipeline builds it instead of returning zero results.
+      const substrate = fakeSubstrate(fakeHelper(calls, { concepts, items, unindexed: true }));
+      const outcome = await syntelligentSearch({ query: "where do we build greeting text" }, context(root, substrate));
+      expect(calls.helper.indexOf("zgInfo")).toBeGreaterThanOrEqual(0);
+      expect(calls.helper.indexOf("zgInfo")).toBeLessThan(calls.helper.indexOf("zgIndex"));
+      expect(calls.helper.indexOf("zgIndex")).toBeLessThan(calls.helper.indexOf("zgSearch"));
+      const stageNames = outcome.receipt.stages.map((stage) => stage.name);
+      expect(stageNames).toContain("workspace-index");
+      expect(outcome.receipt.stages.find((stage) => stage.name === "workspace-index")?.candidates).toBe(7);
+      expect(stageNames).toContain("semantic-retrieval");
+      expect(stageNames).toContain("exact-verification");
+      expect(outcome.results.length).toBeGreaterThan(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a failed index build degrades honestly — no results, no invented stages", async () => {
+    const calls: FakeCalls = { helper: [], solidlsp: [], rg: [] };
+    const root = workspace();
+    try {
+      const concepts: readonly ConceptMatch[] = [
+        { id: "c:1", kind: "concept", label: "Greeting", score: 0.4, metadata: {}, links: ["alpha.ts"] },
+      ];
+      const substrate = fakeSubstrate(fakeHelper(calls, { concepts, unindexed: true, indexFails: true, failSearch: true }));
+      const outcome = await syntelligentSearch({ query: "where do we build greeting text" }, context(root, substrate));
+      const stageNames = outcome.receipt.stages.map((stage) => stage.name);
+      expect(stageNames).toContain("workspace-index");
+      expect(outcome.receipt.stages.find((stage) => stage.name === "workspace-index")?.candidates).toBe(0);
+      expect(stageNames).not.toContain("semantic-retrieval");
+      expect(outcome.results.length).toBe(0);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

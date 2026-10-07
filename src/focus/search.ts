@@ -429,6 +429,16 @@ export async function syntelligentSearch(request: SearchRequest, context: Search
       if (linkedModules.length > 0) focusScope = Math.min(focusScope, linkedModules.length);
       stages.push({ name: "structural-scope", mechanism: "structural-map", candidates: linkedModules.length });
 
+      // The workspace index is a deterministic reduction that nothing else
+      // builds: a fresh checkout (clean-machine oracle, a new world) starts
+      // with zgInfo indexed:false and zgSearch errors until one build ran.
+      // Build on demand here; a failed build degrades honestly below.
+      const zgState = (await clients.helper.zgInfo(context.root).catch(() => undefined)) as { indexed?: boolean } | undefined;
+      if (zgState && zgState.indexed === false) {
+        const built = (await clients.helper.zgIndex(context.root).catch(() => undefined)) as { files_scanned?: number } | undefined;
+        stages.push({ name: "workspace-index", mechanism: "zvec-grep", candidates: typeof built?.files_scanned === "number" ? built.files_scanned : 0 });
+      }
+
       const search = await clients.helper.zgSearch({ root: context.root, query: request.query, mode: "hybrid", limit: ZG_CANDIDATE_POOL }).catch(() => undefined);
       if (search) {
         stages.push({ name: "semantic-retrieval", mechanism: "zvec-grep", candidates: search.items.length });
